@@ -185,3 +185,145 @@ def test_sixteen_valves():
     spr = load(PKG / "sprinkler.yaml")["sprinkler"]
     ctrl = spr[0] if isinstance(spr, list) else spr
     assert len(ctrl["valves"]) == 16
+
+
+# ---- Task 8: editors and API actions ----
+
+CORE_CPP = PKG / "components" / "irrigation_core" / "irrigation_core.cpp"
+
+EXPECTED_ACTIONS = {
+    "run_zone": {"zone": "int", "minutes": "int"},
+    "run_program": {"program": "int"},
+    "stop_all": {},
+    "rain_delay": {"hours": "int"},
+    "set_weather_adjust": {"pct": "int", "skip": "bool", "reason": "string", "valid_hours": "int"},
+    "set_program": {
+        "program": "int", "name": "string", "enabled": "bool", "mode": "int",
+        "weekday_mask": "int", "interval_days": "int", "days_until_first": "int",
+        "starts": "int[]", "zone_minutes": "int[]", "seasonal_pct": "int",
+        "cycle_soak": "bool", "weather_adjust": "bool",
+    },
+    "set_zone": {
+        "zone": "int", "name": "string", "enabled": "bool", "head": "int", "precip": "float",
+        "soil": "int", "slope": "int", "sun": "int", "plant": "int", "area": "float",
+        "max_cycle_min": "int", "soak_min": "int", "baseline": "float", "high_pct": "int",
+        "low_pct": "int", "action": "int", "output": "string",
+    },
+    "set_settings": {
+        "zone_count": "int", "controller_enabled": "bool", "monthly_pct": "int[]",
+        "pulses_per_litre": "float", "leak_lpm": "float", "settle_s": "int", "rain_type": "int",
+        "mm_per_tip": "float", "rain_skip_mm": "float", "rain_stops": "bool",
+        "hard_cap_min": "int", "start_short_fn": "int", "start_long_fn": "int",
+        "stop_short_fn": "int", "stop_long_fn": "int", "button_program": "int",
+        "master_output": "string", "relay_active_high": "bool",
+    },
+    "get_plan": {"days": "int"},
+    "get_run_log": {"since": "int"},
+    "get_config": {},
+}
+RESPONSE_ACTIONS = {"get_plan", "get_run_log", "get_config"}
+
+
+def _actions():
+    acts = load(PKG / "api_actions.yaml")["api"]["actions"]
+    return {a["action"]: a for a in acts}
+
+
+def test_packages_enabled():
+    pkgs = load(PKG / "package.yaml")["packages"]
+    for k in ("editor_program", "editor_zone", "api_actions"):
+        assert pkgs[k] == f"!include {k}.yaml", k
+
+
+def test_actions_present():
+    acts = _actions()
+    assert set(acts) == set(EXPECTED_ACTIONS)
+    for name, args in EXPECTED_ACTIONS.items():
+        assert (acts[name].get("variables") or {}) == args, name
+        if name in RESPONSE_ACTIONS:
+            assert acts[name]["supports_response"] == "only", name
+        else:
+            assert "supports_response" not in acts[name], name
+
+
+def _config_json_keys():
+    src = CORE_CPP.read_text(encoding="utf-8")
+    start = src.index("std::string IrrigationCore::config_json()")
+    body = src[start : src.index("return j;", start)]
+    keys = re.findall(r'\\"(\w+)\\":', body)
+    iz, isett = keys.index("zones"), keys.index("settings")
+    return keys[1:iz], keys[iz + 1 : isett], keys[isett + 1 :]
+
+
+def test_config_json_keys_match_action_arguments():
+    # Backup -> restore: every config_json key is exactly an action argument, so
+    # get_config output feeds set_program / set_zone / set_settings unchanged.
+    progs, zones, sett = _config_json_keys()
+    assert sorted(progs) == sorted(EXPECTED_ACTIONS["set_program"])
+    assert sorted(zones) == sorted(EXPECTED_ACTIONS["set_zone"])
+    assert sorted(sett) == sorted(EXPECTED_ACTIONS["set_settings"])
+    assert len(set(progs)) == len(progs) and len(set(zones)) == len(zones)
+
+
+def _entity_names(doc):
+    out = []
+    for domain in ("text", "select", "switch", "number", "datetime", "button"):
+        for e in as_list(doc.get(domain)):
+            out.append((domain, e["name"], e))
+    return out
+
+
+def test_editor_save_buttons():
+    for fname, prefix in (("editor_program.yaml", "Program Editor"), ("editor_zone.yaml", "Zone Editor")):
+        names = {n for d, n, _ in _entity_names(load(PKG / fname)) if d == "button"}
+        assert f"{prefix} Save" in names and f"{prefix} Revert" in names, fname
+    zb = {n for d, n, _ in _entity_names(load(PKG / "editor_zone.yaml")) if d == "button"}
+    assert {"Zone Editor Learn Flow", "Zone Editor Test Run"} <= zb
+
+
+def test_editor_entities_are_config_except_buttons():
+    for fname in ("editor_program.yaml", "editor_zone.yaml"):
+        for d, n, e in _entity_names(load(PKG / fname)):
+            if " Name" in n and n.split()[0] in ("Program", "Zone") and n.split()[1].isdigit():
+                continue
+            if d == "button" and n.endswith(("Save", "Revert", "Learn Flow", "Test Run")):
+                assert "entity_category" not in e, n
+            else:
+                assert e.get("entity_category") == "config", n
+
+
+def test_name_texts_wired_to_core():
+    for fname, key, label, count, prefix in (
+        ("editor_program.yaml", "program_name_texts", "Program", 8, "prog_name_"),
+        ("editor_zone.yaml", "zone_name_texts", "Zone", 16, "zone_name_"),
+    ):
+        doc = load(PKG / fname)
+        ids = [f"{prefix}{n}" for n in range(1, count + 1)]
+        assert doc["irrigation_core"][key] == ids
+        texts = {t["id"]: t for t in as_list(doc["text"]) if "id" in t}
+        for n, i in enumerate(ids, 1):
+            t = texts[i]
+            assert t["name"] == f"{label} {n} Name"
+            assert t["restore_value"] is True and t["max_length"] == 24
+
+
+def test_zone_editor_output_uses_core_select():
+    sel = {s["name"]: s for s in as_list(load(PKG / "editor_zone.yaml")["select"])}
+    out = sel["Zone Editor Output"]
+    assert out["platform"] == "irrigation_core"
+    assert out["id"] == "ze_output"
+
+
+def test_program_editor_entity_set():
+    names = {n for _, n, _ in _entity_names(load(PKG / "editor_program.yaml"))}
+    expected = {f"Program Editor {d}" for d in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")}
+    expected |= {f"Program Editor Start {n}" for n in range(1, 5)}
+    expected |= {f"Program Editor Start {n} Active" for n in range(1, 5)}
+    expected |= {f"Program Editor Zone {n} Minutes" for n in range(1, 17)}
+    expected |= {
+        "Program Editor Program", "Program Editor Enabled", "Program Editor Day Mode",
+        "Program Editor Interval Days", "Program Editor Days Until First Run",
+        "Program Editor Seasonal Adjust", "Program Editor Cycle Soak",
+        "Program Editor Weather Adjust", "Program Editor Save", "Program Editor Revert",
+    }
+    assert expected <= names
