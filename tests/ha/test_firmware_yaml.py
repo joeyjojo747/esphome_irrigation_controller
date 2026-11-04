@@ -207,7 +207,7 @@ EXPECTED_ACTIONS = {
         "zone": "int", "name": "string", "enabled": "bool", "head": "int", "precip": "float",
         "soil": "int", "slope": "int", "sun": "int", "plant": "int", "area": "float",
         "max_cycle_min": "int", "soak_min": "int", "baseline": "float", "high_pct": "int",
-        "low_pct": "int", "action": "int", "output": "string",
+        "low_pct": "int", "action": "int", "zone_output": "string",
     },
     "set_settings": {
         "zone_count": "int", "controller_enabled": "bool", "monthly_pct": "int[]",
@@ -288,7 +288,7 @@ def test_editor_entities_are_config_except_buttons():
                 continue
             if d == "button" and n.endswith(("Save", "Revert", "Learn Flow", "Test Run")):
                 assert "entity_category" not in e, n
-            else:
+            elif e["platform"] != "irrigation_core":  # the core select sets its own category
                 assert e.get("entity_category") == "config", n
 
 

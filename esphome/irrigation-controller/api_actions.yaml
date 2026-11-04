@@ -4,6 +4,8 @@
 # are 1-based. Out-of-range values are clamped by the core with a WARN; an invalid
 # index, array length or output label rejects the whole call (WARN, Last Error,
 # nothing changed). The editors and settings entities reload after each set_*.
+# set_zone takes its output label as zone_output ("output" is a reserved ESPHome id
+# and is rejected as an action variable name); "" leaves the output unchanged.
 api:
   actions:
     - action: run_zone
@@ -74,10 +76,10 @@ api:
         high_pct: int
         low_pct: int
         action: int
-        output: string
+        zone_output: string
       then:
         - lambda: |-
-            id(irr).api_set_zone(zone, name, enabled, head, precip, soil, slope, sun, plant, area, max_cycle_min, soak_min, baseline, high_pct, low_pct, action, output);
+            id(irr).api_set_zone(zone, name, enabled, head, precip, soil, slope, sun, plant, area, max_cycle_min, soak_min, baseline, high_pct, low_pct, action, zone_output);
         - script.execute: ze_load
     - action: set_settings
       variables:

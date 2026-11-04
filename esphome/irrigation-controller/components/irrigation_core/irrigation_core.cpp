@@ -1311,7 +1311,7 @@ std::string IrrigationCore::config_json() {
     j += ",\"high_pct\":" + std::to_string(z.flow_high_pct);
     j += ",\"low_pct\":" + std::to_string(z.flow_low_pct);
     j += ",\"action\":" + std::to_string(static_cast<int>(z.flow_action));
-    j += ",\"output\":";
+    j += ",\"zone_output\":";
     json_escape_append(j, irrigation::output_label(this->applied_[i]));
     j += '}';
   }
