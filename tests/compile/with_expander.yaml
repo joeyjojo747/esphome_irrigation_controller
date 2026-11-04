@@ -5,7 +5,6 @@ substitutions:
   name: irrigation-expander
   friendly_name: Irrigation
   timezone: Australia/Sydney
-  rtc_enabled: "true"
   version: "0.1.0"
   output_candidates: "1, 2, 3, 6, 7, 18, 21"
   flow_pin: "23"
@@ -26,6 +25,7 @@ packages:
   irrigation: !include ../../esphome/irrigation-controller/package.yaml
   expander: !include ../../esphome/irrigation-controller/expander.yaml
   status_led: !include ../../esphome/irrigation-controller/status_led.yaml
+  rtc: !include ../../esphome/irrigation-controller/rtc.yaml
 
 external_components:
   - source:

@@ -108,52 +108,69 @@ switch:
 select:
   - platform: irrigation_core
     name: "Zone 1 Output"
+    entity_category: config
     slot: 1
   - platform: irrigation_core
     name: "Zone 2 Output"
+    entity_category: config
     slot: 2
   - platform: irrigation_core
     name: "Zone 3 Output"
+    entity_category: config
     slot: 3
   - platform: irrigation_core
     name: "Zone 4 Output"
+    entity_category: config
     slot: 4
   - platform: irrigation_core
     name: "Zone 5 Output"
+    entity_category: config
     slot: 5
   - platform: irrigation_core
     name: "Zone 6 Output"
+    entity_category: config
     slot: 6
   - platform: irrigation_core
     name: "Zone 7 Output"
+    entity_category: config
     slot: 7
   - platform: irrigation_core
     name: "Zone 8 Output"
+    entity_category: config
     slot: 8
   - platform: irrigation_core
     name: "Zone 9 Output"
+    entity_category: config
     slot: 9
   - platform: irrigation_core
     name: "Zone 10 Output"
+    entity_category: config
     slot: 10
   - platform: irrigation_core
     name: "Zone 11 Output"
+    entity_category: config
     slot: 11
   - platform: irrigation_core
     name: "Zone 12 Output"
+    entity_category: config
     slot: 12
   - platform: irrigation_core
     name: "Zone 13 Output"
+    entity_category: config
     slot: 13
   - platform: irrigation_core
     name: "Zone 14 Output"
+    entity_category: config
     slot: 14
   - platform: irrigation_core
     name: "Zone 15 Output"
+    entity_category: config
     slot: 15
   - platform: irrigation_core
     name: "Zone 16 Output"
+    entity_category: config
     slot: 16
   - platform: irrigation_core
     name: "Master Output"
+    entity_category: config
     slot: master

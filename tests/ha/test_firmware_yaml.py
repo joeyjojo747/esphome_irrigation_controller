@@ -119,20 +119,24 @@ def test_buttons_local():
         assert "homeassistant." not in text
 
 
+# The only secret-looking literal allowed in tracked files: the dummy in secrets.yaml.example.
+DUMMY_API_KEY = "ZHVtbXkta2V5LWZvci1jaS1ub3QtYS1zZWNyZXQtMDA="
+
+
 def test_no_plaintext_secrets():
     base = load(PKG / "base.yaml")
     assert base["api"]["encryption"]["key"] == "!secret api_key"
     otas = as_list(base["ota"])
     assert otas and all(o["password"] == "!secret ota_password" for o in otas)
+    example = load(ROOT / "esphome" / "secrets.yaml.example")
+    assert example["api_key"] == DUMMY_API_KEY
     files = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.splitlines()
-    key_re = re.compile(r"key:\s*[\"']?[A-Za-z0-9+/]{43}=")
-    pw_re = re.compile(r"password:\s*[\"']?[0-9a-fA-F]{32}(?![0-9a-fA-F])")
+    key_re = re.compile(r"key:\s*[\"']?([A-Za-z0-9+/]{43}=)")
+    pw_re = re.compile(r"password:\s*[\"']?([0-9a-fA-F]{32})(?![0-9a-fA-F])")
+    allowed = {DUMMY_API_KEY}
     for rel in files:
-        # The example file holds obvious dummy values on purpose.
-        if rel.endswith("secrets.yaml.example"):
-            continue
         p = ROOT / rel
         if not p.is_file():
             continue
@@ -140,8 +144,41 @@ def test_no_plaintext_secrets():
             text = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        assert not key_re.search(text), f"{rel} contains a base64 key literal"
-        assert not pw_re.search(text), f"{rel} contains a 32-hex password literal"
+        for m in key_re.finditer(text):
+            assert m.group(1) in allowed, f"{rel} contains a base64 key literal"
+        for m in pw_re.finditer(text):
+            assert m.group(1) in allowed, f"{rel} contains a 32-hex password literal"
+
+
+def test_settings_switches_do_not_restore():
+    # The core is the source of truth; a restored switch would write stale state back.
+    sw = [
+        s
+        for s in as_list(load(PKG / "settings.yaml").get("switch"))
+        if s.get("platform") == "template"
+    ]
+    assert len(sw) == 2
+    for s in sw:
+        assert s["restore_mode"] == "DISABLED", s
+
+
+def test_fixture_matches_wrapper_substitutions():
+    wrapper = load(WRAPPER)["substitutions"]
+    fixture = load(ROOT / "tests" / "compile" / "with_expander.yaml")["substitutions"]
+    keys = [
+        "timezone", "output_candidates", "flow_pin", "rain_pin", "start_pin",
+        "stop_pin", "led_pin", "sda_pin", "scl_pin", "default_outputs",
+        "default_master_output",
+    ]
+    for k in keys:
+        assert fixture[k] == wrapper[k], k
+
+
+def test_output_selects_are_config():
+    out = load(PKG / "outputs.yaml")
+    sels = [s for s in as_list(out["select"]) if s.get("platform") == "irrigation_core"]
+    assert len(sels) == 17
+    assert all(s["entity_category"] == "config" for s in sels)
 
 
 def test_sixteen_valves():

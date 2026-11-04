@@ -38,16 +38,6 @@ sensor:
     state_class: measurement
     update_interval: 5s
     lambda: 'return id(irr).rain_mm_24h();'
-  # float32 holds an epoch timestamp to about a minute, which is fine for "Next Run".
-  - platform: template
-    name: "Next Run"
-    device_class: timestamp
-    accuracy_decimals: 0
-    update_interval: 5s
-    lambda: |-
-      int32_t t = id(irr).next_run_ts();
-      if (t <= 0) return NAN;
-      return (float) t;
   - platform: template
     name: "Remaining Time"
     unit_of_measurement: "s"
@@ -194,6 +184,16 @@ sensor:
     lambda: 'return id(irr).zone_litres_total(15);'
 
 text_sensor:
+  # ISO-8601 UTC text keeps full precision (a float32 epoch is only good to ~2 minutes).
+  # Empty text is unknown in Home Assistant when nothing is scheduled.
+  - platform: template
+    name: "Next Run"
+    device_class: timestamp
+    update_interval: 5s
+    lambda: |-
+      int32_t t = id(irr).next_run_ts();
+      if (t <= 0) return std::string("");
+      return ESPTime::from_epoch_utc((time_t) t).strftime("%Y-%m-%dT%H:%M:%SZ");
   - platform: template
     name: "Status"
     update_interval: 5s

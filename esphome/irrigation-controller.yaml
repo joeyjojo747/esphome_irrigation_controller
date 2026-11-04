@@ -14,7 +14,8 @@
 #   6. Expander: for more than 6 zones fit an MCP23017 on the I2C bus and add
 #        expander: !include irrigation-controller/expander.yaml
 #      under `packages:` (and `status_led: !include irrigation-controller/status_led.yaml`
-#      if you fit a status LED on led_pin).
+#      if you fit a status LED on led_pin, and `rtc: !include irrigation-controller/rtc.yaml`
+#      if you fit a DS3231 RTC).
 #
 # Relay outputs are NOT set here. Which pin or MCP channel drives each zone and the
 # master valve/pump, and the relay trigger level, are chosen in Home Assistant under
@@ -28,7 +29,6 @@ substitutions:
   name: irrigation-controller
   friendly_name: Irrigation
   timezone: Australia/Sydney
-  rtc_enabled: "false"  # "true" if a DS1307/DS3231 RTC is fitted on the I2C bus
   version: "0.1.0"
   # Board wiring (FireBeetle 2 ESP32-C6)
   output_candidates: "1, 2, 3, 6, 7, 18, 21"
@@ -55,6 +55,7 @@ packages:
   irrigation: !include irrigation-controller/package.yaml
   # expander: !include irrigation-controller/expander.yaml
   # status_led: !include irrigation-controller/status_led.yaml
+  # rtc: !include irrigation-controller/rtc.yaml
 
 external_components:
   - source:

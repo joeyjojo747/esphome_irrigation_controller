@@ -1,0 +1,22 @@
+# Optional DS3231/DS1307 RTC on the I2C bus. Keeps the clock valid across power loss
+# with no network. ds1307 also works with a DS3231 (same address and registers).
+# Merges into the time sources declared in base.yaml (matched by id).
+time:
+  - id: ha_time
+    on_time_sync:
+      - ds1307.write_time:
+          id: rtc_time
+  - id: local_time
+    on_time_sync:
+      - ds1307.write_time:
+          id: rtc_time
+  - platform: ds1307
+    id: rtc_time
+    timezone: ${timezone}
+    update_interval: never
+
+esphome:
+  on_boot:
+    - then:
+        - ds1307.read_time:
+            id: rtc_time

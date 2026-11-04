@@ -411,6 +411,7 @@ switch:
   - platform: template
     id: set_controller_enabled
     name: "Controller Enabled"
+    restore_mode: DISABLED
     optimistic: true
     turn_on_action:
       - lambda: |-
@@ -423,6 +424,7 @@ switch:
   - platform: template
     id: set_rain_stops
     name: "Rain Sensor Stops Watering"
+    restore_mode: DISABLED
     entity_category: config
     optimistic: true
     turn_on_action:
