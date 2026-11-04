@@ -120,7 +120,7 @@ TEST_CASE("project 3 days") {
   uint8_t monthly[12];
   for (auto& m : monthly) m = 100;
   const int32_t d0 = days_from_civil(2026, 11, 2);
-  auto r = project(ps, z, 16, monthly, LocalDateTime{d0, 400}, 3,
+  auto r = project(ps, z, 16, monthly, 7200, LocalDateTime{d0, 400}, 3,
                    [](const Program&, int32_t) -> uint16_t { return 80; });
   REQUIRE(r.size() == 3);
   CHECK(r[0].day == d0 + 1);
@@ -131,8 +131,32 @@ TEST_CASE("project 3 days") {
   CHECK(r[0].zone_count == 1);
   CHECK(r[0].program == 0);
 
-  r = project(ps, z, 16, monthly, LocalDateTime{d0, 300}, 1,
+  r = project(ps, z, 16, monthly, 7200, LocalDateTime{d0, 300}, 1,
               [](const Program&, int32_t) -> uint16_t { return 100; });
   REQUIRE(r.size() == 1);
   CHECK(r[0].day == d0);
+}
+
+TEST_CASE("effective pct half-up boundary") {
+  CHECK(effective_pct(1, 50, 100) == 1);   // 0.5 rounds up
+  CHECK(effective_pct(1, 49, 100) == 0);   // 0.49 rounds down
+  CHECK(effective_pct(3, 50, 100) == 2);   // 1.5 rounds up
+}
+
+TEST_CASE("project applies hard cap and dedupes identical starts") {
+  Program ps[kPrograms];
+  for (auto& x : ps) x = default_program();
+  ps[0] = daily_at(360);
+  ps[0].start_minutes[1] = 360;  // identical second slot
+  ps[0].zone_seconds[0] = 9000;
+  ps[0].cycle_soak = false;
+  Zone z[kZones];
+  zones_init(z);
+  uint8_t monthly[12];
+  for (auto& m : monthly) m = 100;
+  const int32_t d0 = days_from_civil(2026, 11, 2);
+  auto r = project(ps, z, 16, monthly, 7200, LocalDateTime{d0, 0}, 1,
+                   [](const Program&, int32_t) -> uint16_t { return 100; });
+  REQUIRE(r.size() == 1);
+  CHECK(r[0].total_s == 7200);
 }

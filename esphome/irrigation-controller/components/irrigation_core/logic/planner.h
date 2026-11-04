@@ -25,8 +25,9 @@ struct PlannedRun {
   uint8_t zone_count;
 };
 
+// Rain/weather skips are not modelled: only pct == 0 (empty expansion) drops a run.
 std::vector<PlannedRun> project(const Program (&progs)[kPrograms], const Zone (&zones)[kZones],
-                                uint8_t zone_count, const uint8_t (&monthly_pct)[12],
+                                uint8_t zone_count, const uint8_t (&monthly_pct)[12], uint32_t hard_cap_s,
                                 LocalDateTime from, int days,
                                 std::function<uint16_t(const Program&, int32_t day)> weather_pct_for);
 

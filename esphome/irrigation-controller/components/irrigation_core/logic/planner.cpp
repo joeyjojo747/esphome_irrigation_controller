@@ -43,7 +43,7 @@ std::vector<Step> expand_program(const Program& p, const Zone (&zones)[kZones], 
 }
 
 std::vector<PlannedRun> project(const Program (&progs)[kPrograms], const Zone (&zones)[kZones],
-                                uint8_t zone_count, const uint8_t (&monthly_pct)[12],
+                                uint8_t zone_count, const uint8_t (&monthly_pct)[12], uint32_t hard_cap_s,
                                 LocalDateTime from, int days,
                                 std::function<uint16_t(const Program&, int32_t day)> weather_pct_for) {
   std::vector<PlannedRun> out;
@@ -59,7 +59,7 @@ std::vector<PlannedRun> project(const Program (&progs)[kPrograms], const Zone (&
       if (!p.enabled || !is_due_on(p, day)) continue;
       const uint16_t wpct = weather_pct_for ? weather_pct_for(p, day) : 100;
       const uint16_t pct = effective_pct(p.seasonal_pct, monthly_pct[m - 1], wpct);
-      std::vector<Step> steps = expand_program(p, zones, zone_count, pct, UINT32_MAX);
+      std::vector<Step> steps = expand_program(p, zones, zone_count, pct, hard_cap_s);
       if (steps.empty()) continue;
       uint32_t total = 0;
       bool seen[kZones] = {};
@@ -76,7 +76,10 @@ std::vector<PlannedRun> project(const Program (&progs)[kPrograms], const Zone (&
         if (mn < 0) continue;
         const int64_t t = static_cast<int64_t>(day) * 1440 + mn;
         if (t < lo || t >= hi) continue;
-        out.push_back({static_cast<uint8_t>(pi), day, mn, total, pct, zc});
+        bool dup = false;
+        for (const auto& e : out)
+          if (e.program == pi && e.day == day && e.minute == mn) dup = true;
+        if (!dup) out.push_back({static_cast<uint8_t>(pi), day, mn, total, pct, zc});
       }
     }
   }
