@@ -1,7 +1,7 @@
 #include "doctest.h"
-#include "logic/civil.h"
-#include "logic/schedule.h"
-#include "logic/types.h"
+#include "civil.h"
+#include "schedule.h"
+#include "types.h"
 #include "test_helpers.h"
 
 using namespace irrigation;

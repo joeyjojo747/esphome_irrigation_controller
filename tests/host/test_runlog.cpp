@@ -1,6 +1,6 @@
 #include "doctest.h"
-#include "logic/civil.h"
-#include "logic/runlog.h"
+#include "civil.h"
+#include "runlog.h"
 
 using namespace irrigation;
 

@@ -1,5 +1,5 @@
 #include "doctest.h"
-#include "logic/buttons.h"
+#include "buttons.h"
 
 using namespace irrigation;
 

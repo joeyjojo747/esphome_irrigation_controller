@@ -2,7 +2,7 @@
 #include <utility>
 
 #include "doctest.h"
-#include "logic/runner.h"
+#include "runner.h"
 
 using namespace irrigation;
 

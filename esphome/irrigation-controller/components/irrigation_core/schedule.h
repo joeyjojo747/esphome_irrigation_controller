@@ -43,6 +43,8 @@ class Scheduler {
   Scheduler() { reset(); }
   std::vector<DueStart> tick(LocalDateTime now, bool time_valid, const Program (&progs)[kPrograms]);
   void reset();
+  // Clears program i's once-per-day guard (call after editing it); out of range is ignored.
+  void reset_program(uint8_t i);
 
  private:
   int64_t last_eval_;  // minute index (day*1440+minute); -1 = unset

@@ -1,5 +1,5 @@
 #include "doctest.h"
-#include "logic/pinmap.h"
+#include "pinmap.h"
 
 using namespace irrigation;
 

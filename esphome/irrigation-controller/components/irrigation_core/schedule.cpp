@@ -67,6 +67,11 @@ void Scheduler::reset() {
     for (auto& v : row) v = INT32_MIN;
 }
 
+void Scheduler::reset_program(uint8_t i) {
+  if (i >= kPrograms) return;
+  for (auto& v : last_fired_day_[i]) v = INT32_MIN;
+}
+
 std::vector<DueStart> Scheduler::tick(LocalDateTime now, bool time_valid,
                                       const Program (&progs)[kPrograms]) {
   std::vector<DueStart> out;

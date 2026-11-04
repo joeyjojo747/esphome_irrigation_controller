@@ -1,5 +1,5 @@
 #include "doctest.h"
-#include "logic/flow.h"
+#include "flow.h"
 
 using namespace irrigation;
 
