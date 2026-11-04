@@ -89,10 +89,22 @@ void SprinklerDriver::stop_all() {
 
 bool SprinklerDriver::is_idle() const {
   if (this->spr_->active_valve().has_value()) {
+    this->pending_ = false;  // the valve opened: from now on idle means it closed
+    return false;
+  }
+  // A start still pending in the sprinkler FSM (stop/pump delays) is not a stop.
+  // A start that never opens is not reported idle here (that could read as
+  // COMPLETED for a short step): take_start_failure() reports it instead.
+  return !this->pending_;
+}
+
+bool SprinklerDriver::take_start_failure() {
+  if (!this->pending_) return false;
+  if (this->spr_->active_valve().has_value()) {
     this->pending_ = false;
     return false;
   }
-  if (this->pending_ && millis() - this->pending_since_ms_ < kStartPendingMs) return false;
+  if (millis() - this->pending_since_ms_ < kStartPendingMs) return false;
   this->pending_ = false;
   return true;
 }
@@ -280,13 +292,21 @@ void IrrigationCore::tick_(uint32_t dt_ms) {
                this->program_name_(d.program).c_str());
   }
 
-  // 3. Runner and flow.
+  // 3. Runner and flow. A valve that never opened ends its step as STOPPED.
+  if (this->driver_.take_start_failure()) {
+    ESP_LOGW(TAG, "Valve did not open; step stopped");
+    this->runner_.stop_zone_with(Result::STOPPED, now_s);
+  }
   this->runner_.loop(now_s);
 
   const float flow = this->flow_lpm_();
   auto av = this->sprinkler_->active_valve();
   std::optional<uint8_t> az;
   if (av.has_value() && *av < (size_t) kZones) az = static_cast<uint8_t>(*av);
+  if (az != this->trip_zone_) {  // new valve opening (or all closed): re-arm stop actions
+    this->trip_zone_ = az;
+    this->trip_latched_ = false;
+  }
 
   if (this->has_flow_sensor_()) {
     if (this->flow_zone_open_ && (!az.has_value() || *az != this->flow_zone_)) {
@@ -318,13 +338,8 @@ void IrrigationCore::tick_(uint32_t dt_ms) {
       ESP_LOGW(TAG, "%s flow %s: %.1f L/min (limit %.1f)", this->zone_name_(zi).c_str(), high ? "high" : "low",
                flow, limit);
       this->alert_(high ? "flow_high" : "flow_low", zi, flow, limit);
-      if (z.flow_action == irrigation::FlowAction::ALERT_AND_STOP) {
-        if (this->runner_.active_zone() == az && az.has_value()) {
-          this->runner_.stop_zone_with(high ? Result::FLOW_HIGH : Result::FLOW_LOW, now_s);
-        } else {
-          this->sprinkler_->shutdown(true);
-        }
-      }
+      if (z.flow_action == irrigation::FlowAction::ALERT_AND_STOP)
+        this->trip_stop_(az, high ? Result::FLOW_HIGH : Result::FLOW_LOW, now_s);
     } else if (fe == irrigation::FlowEvent::LEAK) {
       this->leak_active_ = true;
       ESP_LOGW(TAG, "Leak: %.1f L/min with all valves closed", flow);
@@ -348,14 +363,10 @@ void IrrigationCore::tick_(uint32_t dt_ms) {
   }
 
   // 4. Max-runtime failsafe on whatever valve is open.
-  if (this->safety_.exceeded(az, now_s, st.zone_hard_cap_s) && az.has_value()) {
+  if (this->safety_.exceeded(az, now_s, st.zone_hard_cap_s) && az.has_value() && !this->trip_latched_) {
     const uint8_t zi = *az;
     ESP_LOGW(TAG, "%s exceeded the %" PRIu32 " s runtime limit", this->zone_name_(zi).c_str(), st.zone_hard_cap_s);
-    if (this->runner_.active_zone() == az) {
-      this->runner_.stop_zone_with(Result::MAX_RUNTIME, now_s);
-    } else {
-      this->sprinkler_->shutdown(true);
-    }
+    this->trip_stop_(az, Result::MAX_RUNTIME, now_s);
     this->alert_("max_runtime", zi, flow, static_cast<float>(st.zone_hard_cap_s));
   }
 
@@ -372,6 +383,18 @@ void IrrigationCore::tick_(uint32_t dt_ms) {
   } else {
     this->clock_alert_sent_ = false;
   }
+}
+
+void IrrigationCore::trip_stop_(std::optional<uint8_t> az, Result r, uint32_t now_s) {
+  if (this->trip_latched_ || !az.has_value()) return;
+  this->trip_latched_ = true;  // once per valve opening
+  const auto rz = this->runner_.active_zone();
+  if (rz == az) {
+    this->runner_.stop_zone_with(r, now_s);
+  } else if (!rz.has_value()) {
+    this->sprinkler_->shutdown(true);  // a valve the Runner does not own (web UI / HA)
+  }
+  // else: the Runner already started a different zone; the tripped valve is closing.
 }
 
 // ---------------------------------------------------------------- events
@@ -453,7 +476,8 @@ void IrrigationCore::on_program_finished_(uint32_t instance, uint8_t program) {
 irrigation::Program &IrrigationCore::program(uint8_t i) {
   if (i >= kPrograms) {
     ESP_LOGW(TAG, "program(%u) out of range", i);
-    i = kPrograms - 1;
+    this->scratch_program_ = irrigation::default_program();
+    return this->scratch_program_;  // never edits a real program
   }
   return this->programs_.p[i];
 }
@@ -461,7 +485,8 @@ irrigation::Program &IrrigationCore::program(uint8_t i) {
 irrigation::Zone &IrrigationCore::zone(uint8_t i) {
   if (i >= kZones) {
     ESP_LOGW(TAG, "zone(%u) out of range", i);
-    i = kZones - 1;
+    this->scratch_zone_ = irrigation::default_zone();
+    return this->scratch_zone_;  // never edits a real zone
   }
   return this->zones_.z[i];
 }
@@ -626,6 +651,8 @@ PinError IrrigationCore::set_relay_active_high(bool v) {
   this->applied_active_high_ = v;
   this->settings_.relay_active_high = v;
   for (uint8_t slot = 0; slot <= kMasterSlot; slot++) this->hw_configure_off_(this->applied_[slot]);
+  // Released outputs were parked at the old off level, which is now the ON level.
+  this->repark_released_();
   ESP_LOGI(TAG, "Relays now active %s", v ? "high" : "low");
   this->save_settings();
   return PinError::OK;
@@ -705,6 +732,26 @@ void IrrigationCore::hw_park_(int16_t code) {
     if (this->expander_ != nullptr) this->expander_->digital_write(r.index, !this->applied_active_high_);
 #endif
   }
+}
+
+void IrrigationCore::repark_released_() {
+  auto in_use = [this](int16_t code) {
+    for (uint8_t s = 0; s <= kMasterSlot; s++)
+      if (this->applied_[s] == code) return true;
+    return false;
+  };
+  for (uint8_t pin : this->board_.candidates)
+    if (!in_use(pin)) this->hw_park_(pin);
+#ifdef USE_IRRIGATION_EXPANDER
+  if (this->expander_ != nullptr) {
+    for (int16_t code = 100; code < 116; code++) {
+      if (in_use(code)) continue;
+      this->hw_park_(code);
+      // A never-used MCP channel is still an input after reset: make it an off output.
+      this->expander_->pin_mode(static_cast<uint8_t>(code - 100), gpio::FLAG_OUTPUT);
+    }
+  }
+#endif
 }
 
 // ---------------------------------------------------------------- commands

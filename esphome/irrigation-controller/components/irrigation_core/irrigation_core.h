@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -98,6 +99,9 @@ class SprinklerDriver : public irrigation::ValveDriver {
   // Not idle while a requested start is still pending in the sprinkler state
   // machine (pump/stop delays), so the Runner does not mistake the gap for a stop.
   bool is_idle() const override;
+  // True once when a requested valve did not open within kStartPendingMs; the core
+  // then ends the Runner step as STOPPED.
+  bool take_start_failure();
 
  protected:
   static constexpr uint32_t kStartPendingMs = 15000;
@@ -252,6 +256,7 @@ class IrrigationCore : public Component {
   void hw_configure_off_(int16_t code);
   void hw_write_(int16_t code, bool level);
   void hw_park_(int16_t code);
+  void repark_released_();
   std::string slot_name_(uint8_t slot) const;
   void notify_output_changed_(uint8_t slot);
   bool watering_() const;
@@ -262,6 +267,7 @@ class IrrigationCore : public Component {
   void save_litres_();
   void save_weather_();
   void save_rain_delay_();
+  void trip_stop_(std::optional<uint8_t> az, irrigation::Result r, uint32_t now_s);
   void alert_(const char *kind, uint8_t zone, float flow, float limit);
   float flow_lpm_() const;
   bool has_flow_sensor_() const;
@@ -327,6 +333,12 @@ class IrrigationCore : public Component {
   uint32_t last_litres_save_s_{0};
 
   // Valve tracking (from sprinkler.active_valve(), so manual toggles count).
+  // Stop actions (max runtime, flow stop) fire at most once per valve opening.
+  bool trip_latched_{false};
+  std::optional<uint8_t> trip_zone_;
+  // Returned by program()/zone() for an out-of-range index.
+  irrigation::Program scratch_program_{};
+  irrigation::Zone scratch_zone_{};
   bool flow_zone_open_{false};
   uint8_t flow_zone_{0};
 

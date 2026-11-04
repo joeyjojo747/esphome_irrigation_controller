@@ -7,6 +7,7 @@ can be changed from Home Assistant without reflashing.
 import esphome.codegen as cg
 from esphome.components import switch
 import esphome.config_validation as cv
+from esphome.const import CONF_RESTORE_MODE
 
 from .. import CONF_IRRIGATION_CORE_ID, CONF_SLOT, IrrigationCore, irrigation_core_ns, validate_slot
 
@@ -16,7 +17,17 @@ IrrigationOutputSwitch = irrigation_core_ns.class_(
     "IrrigationOutputSwitch", switch.Switch, cg.Component
 )
 
-CONFIG_SCHEMA = (
+
+def _always_off(config):
+    # Relays must never come back on after a reboot (global autonomy rule).
+    if str(config[CONF_RESTORE_MODE]).upper() != "ALWAYS_OFF":
+        raise cv.Invalid(
+            f"restore_mode must be ALWAYS_OFF for irrigation_core output switches, got {config[CONF_RESTORE_MODE]}"
+        )
+    return config
+
+
+CONFIG_SCHEMA = cv.All(
     switch.switch_schema(
         IrrigationOutputSwitch,
         block_inverted=True,
@@ -28,7 +39,8 @@ CONFIG_SCHEMA = (
             cv.Required(CONF_SLOT): validate_slot,
         }
     )
-    .extend(cv.COMPONENT_SCHEMA)
+    .extend(cv.COMPONENT_SCHEMA),
+    _always_off,
 )
 
 
