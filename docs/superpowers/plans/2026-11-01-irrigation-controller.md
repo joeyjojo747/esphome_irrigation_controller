@@ -23,7 +23,7 @@
 
 - **Device:** DFRobot FireBeetle 2 ESP32-C6, `esp32: variant: esp32c6`, `framework: type: esp-idf`. Wi-Fi only, no Thread.
 - **ESPHome:** ≥ 2025.10. It must support `api.respond` action responses; Task 0 verifies this.
-  - Pin the exact version in `tools/requirements-ci.txt`, matching the user's Device Builder add-on version or lower.
+  - Pin the exact version in `tools/requirements-esphome.txt` (`esphome==2026.10.2`), matching the user's Device Builder add-on version or lower.
   - The firmware must build unmodified in Device Builder on a Raspberry Pi 4.
 - **Home Assistant:** the user runs Core 2026.10.4; the minimum is 2025.8, for `ai_task`. Pin `pytest-homeassistant-custom-component` to the release matching HA 2026.10.
 - **HA side is YAML only:**
@@ -34,7 +34,7 @@
 - **Capacity:** 16 zone slots, 8 programs (A–H), 4 start times per program, FIFO of 8 queued programs, run log of 48 records.
 - **No reflash after install:** zone count, names, programs and every §5 setting must be editable from HA.
   - That includes **which output drives each zone and the master valve/pump** (a board GPIO or an MCP23017 channel), plus the relay trigger level. This is ESPyRain's runtime station pins, with validation added.
-  - Compile-time substitutions are limited to the sensor pins (flow, rain, Start/Stop buttons, status LED, I²C), whether an expander is fitted, the board's candidate output GPIOs and the timezone.
+  - Compile-time substitutions are limited to the sensor pins (flow, rain, Start/Stop buttons, status LED, I²C), whether an expander is fitted, `rtc_enabled`, the board's candidate output GPIOs, the first-boot output defaults (`default_outputs`, `default_master_output`; overridable from HA afterwards) and the timezone.
 - **Autonomy settings:**
   - `api: reboot_timeout: 0s` and `wifi: reboot_timeout: 0s`.
   - Every relay `restore_mode: ALWAYS_OFF`.
@@ -60,7 +60,7 @@
 
 ## Review Focus
 
-1. **HA or Wi-Fi down for days.** Programs keep running at program % × monthly %. The weather % stops applying after `valid_until`, and the device never reboots for lack of HA. Runs made while HA was down appear in the calendar after reconnect, even if the device rebooted meanwhile. Tests: Task 2 `weather adjust expires`, Task 7 `test_autonomy_settings`, Task 11 `test_replay_after_outage`.
+1. **HA or Wi-Fi down for days.** Programs keep running at program % × monthly %. The weather % stops applying after `valid_until`, and the device never reboots for lack of HA. Runs since the last device reboot appear in the calendar after reconnect; a reboot during the outage doesn't cause duplicates or block replay (the RunLog is RAM-only, so runs before the reboot are lost). Tests: Task 2 `weather adjust expires`, Task 7 `test_autonomy_settings`, Task 11 `test_replay_after_outage`.
 2. **Power cut, then boot with no network.** Valves stay off. No scheduled start fires while the clock is invalid, and when the clock becomes valid at 07:10 the 06:00 start is not run late. Test: Task 1 `no catch-up after clock becomes valid`.
 3. **DST in Australia** (first Sunday of October 02:00→03:00, first Sunday of April 03:00→02:00). A 02:30 start fires exactly once on both days. Tests: Task 1 `spring forward` and `fall back`.
 4. **Changing a relay output from HA.** The user may pick a strapping, USB or sensor pin, give two zones the same pin, pick an MCP channel with no expander fitted, or change a pin or the trigger level while a zone is watering. The bad assignments must be rejected with a readable reason and leave nothing changed. A change during watering stops watering first. A released pin must not energise its relay, because ESP-IDF `gpio_reset_pin` enables a pull-up, which turns an active-high KS0011 **on**. Tests: Task 5A `rejects reserved/duplicate/no-expander`, `released pin parks at off level`; Task 9 bench items 10–13; Task 11 `test_restore_swapped_outputs`.
@@ -83,7 +83,7 @@ CHANGELOG.md                                Keep a Changelog format
 images/screenshots/                         dashboard and wiring images used by README
 .gitignore                                  secrets, build dirs, .esphome/, reference_docs/custom.yaml
 tools/ci/host-tests.sh, ha-tests.sh, esphome.sh   what each CI job runs
-tools/requirements-ci.txt                   pinned esphome, pytest-homeassistant-custom-component, pyyaml
+tools/requirements-esphome.txt, requirements-ha.txt   pinned esphome / pytest-homeassistant-custom-component (separate: conflicting paho-mqtt pins)
 tools/build_release_zip.py                  release ZIP builder (runs in CI)
 esphome/irrigation-controller.yaml          user wrapper pasted into Device Builder (like espyrain_controller_wrapper.yaml)
 esphome/secrets.yaml.example
@@ -112,6 +112,7 @@ esphome/irrigation-controller/components/irrigation_core/logic/runlog.h/.cpp   R
 esphome/irrigation-controller/components/irrigation_core/logic/pinmap.h/.cpp   output codes, labels, assignment validation, park level
 esphome/irrigation-controller/components/irrigation_core/logic/buttons.h/.cpp  button press -> command, status LED pattern
 esphome/irrigation-controller/components/irrigation_core/switch/__init__.py     `switch: platform: irrigation_core` output switch (slot 0-15 zones, 16 master)
+esphome/irrigation-controller/components/irrigation_core/select/__init__.py     `select: platform: irrigation_core` output select (`slot: 1..16 | master`; options from `output_options()`)
 packages/irrigation/irrigation_helpers.yaml       settings helpers (thresholds, AI, notify targets, tariff, quiet hours)
 packages/irrigation/irrigation_sync.yaml          event router, outage replay, run history, backup/restore
 packages/irrigation/irrigation_calendar.yaml      calendar writer, upcoming-runs sensor
@@ -120,7 +121,7 @@ packages/irrigation/irrigation_ai.yaml            AI advice script (AI Task / co
 packages/irrigation/irrigation_zone_advisor.yaml  cycle & soak suggestion script
 packages/irrigation/irrigation_usage.yaml         utility meters + cost sensors
 packages/irrigation/irrigation_notify.yaml        notify script + notification automation
-tests/host/CMakeLists.txt, doctest.h, test_*.cpp
+tests/host/CMakeLists.txt, doctest.h, test_helpers.h (shared `daily_at`, `assigned_zone`), test_*.cpp
 tests/compile/*.yaml                        ESPHome fixtures (*_bad_*.yaml must fail config)
 tests/ha/                                   pytest: package behaviour, firmware YAML static checks, siteplan, dashboard, release
 dashboards/irrigation-dashboard.yaml
@@ -135,7 +136,7 @@ docs/install.md
 
 **Files:**
 - Create: `.gitignore`, `LICENSE` (Apache-2.0, copyright `2026 joeyjojo747`), `VERSION` (`0.1.0`), `README.md` (stub: title, one-paragraph goal, "work in progress")
-- Create: `.github/workflows/ci.yml`, `tools/ci/host-tests.sh`, `tools/ci/ha-tests.sh`, `tools/ci/esphome.sh`, `tools/requirements-ci.txt`
+- Create: `.github/workflows/ci.yml`, `tools/ci/host-tests.sh`, `tools/ci/ha-tests.sh`, `tools/ci/esphome.sh`, `tools/requirements-esphome.txt`, `tools/requirements-ha.txt`
 - Create: `tests/host/CMakeLists.txt`, `tests/host/doctest.h` (doctest 2.4.11 single header), `tests/host/test_smoke.cpp`
 - Create: `tests/compile/respond_smoke.yaml`, `tests/ha/test_smoke.py`, `pytest.ini`
 
@@ -143,12 +144,12 @@ docs/install.md
 - Produces three CI jobs. Later steps refer to them as `CI: <job>`.
   - **`host-tests`** (ubuntu-latest, `apt-get install g++ cmake`) runs `tools/ci/host-tests.sh`: configure and build `build/host`, then `ctest --output-on-failure`.
     - The CMake target globs `tests/host/test_*.cpp` and every `logic/*.cpp` into one executable, `host_tests`.
-  - **`ha-tests`** (`actions/setup-python` 3.13, `pip install -r tools/requirements-ci.txt`) runs `tools/ci/ha-tests.sh`, which is `pytest` with `pytest.ini` setting `testpaths = tests/ha`. Task 10 adds `check_config`.
+  - **`ha-tests`** (`actions/setup-python` 3.14 (required by the HA 2026.10 test plugin), `pip install -r tools/requirements-ha.txt`) runs `tools/ci/ha-tests.sh`, which is `pytest` with `pytest.ini` setting `testpaths = tests/ha`. Task 10 adds `check_config`.
   - **`esphome`** (setup-python 3.13, `pip install esphome==<pin>`, cache `~/.platformio` and `.esphome`) runs `tools/ci/esphome.sh`:
     - `esphome config` and `esphome compile` on every `tests/compile/*.yaml` except `*_bad_*.yaml`.
     - Each `*_bad_*.yaml` must **fail** `esphome config`, and its expected message is grepped from a `# expect:` comment in that file.
     - From Task 7 on, the script also builds the wrapper with and without the expander.
-- `tools/requirements-ci.txt` pins three things:
+- Two requirement files (esphome and homeassistant pin conflicting `paho-mqtt` versions): `requirements-esphome.txt` = esphome + pyyaml; `requirements-ha.txt` = pytest-homeassistant-custom-component + pyyaml:
   - `esphome==<latest stable>`
   - `pytest-homeassistant-custom-component==<release matching HA 2026.10>`, which also installs the matching `homeassistant` and is used to test the YAML packages; no custom component is involved
   - `pyyaml`
@@ -174,6 +175,7 @@ docs/install.md
 
 **Files:**
 - Create: `logic/types.h`, `logic/civil.h`, `logic/civil.cpp`, `logic/schedule.h`, `logic/schedule.cpp` (under `esphome/irrigation-controller/components/irrigation_core/`)
+- Create: `tests/host/test_helpers.h` (`daily_at`, `assigned_zone`)
 - Test: `tests/host/test_schedule.cpp`
 
 **Interfaces:**
@@ -252,6 +254,7 @@ TEST_CASE("gap over 180 minutes does not fire old starts") {
 TEST_CASE("disabled program and unused slot never fire") { /* enabled=false; start_minutes all -1 */ }
 ```
 
+- The comment-only `TEST_CASE` bodies above are specs, not code: turn each comment into `CHECK`/`REQUIRE` lines.
 - [ ] **Step 2:** CI: host-tests. Expected: FAIL to compile (`days_from_civil` undeclared).
 - [ ] **Step 3: Implement the logic.** The tick algorithm is §5.1:
   - Keep `last_eval_` as a minute index (`day*1440+minute`), with -1 meaning unset.
@@ -260,7 +263,7 @@ TEST_CASE("disabled program and unused slot never fire") { /* enabled=false; sta
   - When `cur <= last_eval_`, set `last_eval_ = cur` and return empty.
   - When `cur - last_eval_ > 180`, set `last_eval_ = cur-1`.
   - Scan the minutes in `(last_eval_, cur]` against each enabled program's slots. Use `is_due_on` and the `int32_t last_fired_day_[kPrograms][kStarts]` guard, initialised to INT32_MIN.
-- [ ] **Step 4:** CI: host-tests. Expected: all PASS.
+- [ ] **Step 4:** CI: host-tests. Expected: all PASS, with at least one `CHECK`/`REQUIRE` in every case.
 - [ ] **Step 5:** Commit: `git commit -am "feat(core): date math, day modes, DST-safe scheduler"` (add the new files first).
 
 ---
@@ -270,6 +273,7 @@ TEST_CASE("disabled program and unused slot never fire") { /* enabled=false; sta
 **Files:**
 - Modify: `logic/schedule.h/.cpp` (add `effective_pct`, `decide_start`)
 - Create: `logic/planner.h`, `logic/planner.cpp`
+- Modify: `tests/host/test_helpers.h` (uses `assigned_zone`)
 - Test: `tests/host/test_planner.cpp`
 
 **Interfaces:**
@@ -341,9 +345,10 @@ TEST_CASE("project 3 days") {
 }
 ```
 
+- The comment-only `TEST_CASE` bodies above are specs, not code: turn each comment into `CHECK`/`REQUIRE` lines.
 - [ ] **Step 2:** CI: host-tests. Expected: FAIL (undeclared).
 - [ ] **Step 3:** Implement the functions with the signatures above. The split rule is §5.1: even split, remainder to the earliest cycles.
-- [ ] **Step 4:** CI: host-tests. Expected: all PASS.
+- [ ] **Step 4:** CI: host-tests. Expected: all PASS, with at least one `CHECK`/`REQUIRE` in every case.
 - [ ] **Step 5:** Commit `feat(core): effective pct, start decision, planner`.
 
 ---
@@ -364,11 +369,11 @@ struct StepEvent { uint32_t instance; uint8_t program; uint8_t zone; uint32_t st
 class Runner {
  public:
   explicit Runner(ValveDriver* d);
-  bool enqueue_program(uint8_t program, std::vector<Step> steps, uint32_t now_s); // false: empty, duplicate, or 8 already queued
+  bool enqueue_program(uint8_t program, std::vector<Step> steps, uint32_t now_s, bool manual = false); // false: empty, duplicate, or 8 already queued
   void run_manual_zone(uint8_t zone, uint32_t run_s, uint32_t now_s);
-  void stop_all(uint32_t now_s);                  // current step -> STOPPED, queued programs dropped (not logged per step)
+  void stop_all(uint32_t now_s);                  // current step -> STOPPED, queued programs dropped unlogged (only the interrupted step is logged STOPPED)
   void stop_zone_with(Result r, uint32_t now_s);  // ends current step with r, continues with next step
-  void set_hold(bool hold, uint32_t now_s);       // hold=true: stops scheduled step (STOPPED) and drops scheduled queue; manual continues
+  void set_hold(bool hold, uint32_t now_s);       // hold=true: stops and drops only instances with manual=false (STOPPED for the running step); manual=true instances and manual zone runs continue
   void loop(uint32_t now_s);                      // now_s = monotonic seconds
   bool busy() const; std::optional<uint8_t> active_zone() const; std::optional<uint8_t> active_program() const;
   std::function<void(const StepEvent&)> on_step_started, on_step_finished;
@@ -393,6 +398,8 @@ class Runner {
     - The driver receives `stop_all` and then `start(3,120)`, and P0's remaining steps are gone.
     - The manual event has `program == kManual`.
   - **Hold:** `set_hold(true)` during P0 → current step STOPPED and the queue is cleared; `enqueue_program` while held still returns true (glue decides skips). A manual run during the hold starts.
+  - **Hold spares manual instances:** `enqueue_program(..., manual=true)` while P1 (`manual=false`) is queued and P0 runs; `set_hold(true)` stops and drops the `manual=false` instances only, and the `manual=true` instance keeps running.
+  - **Stop all while idle:** `stop_all` with nothing running still calls `driver.stop_all()`.
   - **Failsafe:** the driver never reports idle. At `start + run_s + kGraceS` → `stop_all` is called and the step finishes with `MAX_RUNTIME`.
   - **Driver idle early** (external shutdown) → step finishes `STOPPED` with `actual_s` set to the elapsed time. This applies only when idle is seen *after* the driver had been non-idle, or more than 5 s after start.
   - **instance:** steps of the same enqueued program share `instance`. Each enqueue increments it, starting at 1.
@@ -437,7 +444,7 @@ class RainWindow { public: void add_tip(uint32_t now_s); float mm_last_24h(uint3
     - A run with 100 s after settle returns nullopt, and so does a run that raised HIGH.
   - **No leak during drain-down:** after `zone_stopped(t=300)`, 2 L/min for t=300..359 → NONE.
   - **Leak:** 2 L/min from t=360 → LEAK once at t=420. After it drops to 0, a new 2 L/min episode can raise LEAK again.
-  - **Safety:** zone active since t=0, cap 7200 → `exceeded` is false at 7199 and true at 7200. It resets when `active_zone` changes or becomes nullopt.
+  - **Safety:** `exceeded` when elapsed ≥ cap + 10 s, so a step planned at exactly the cap ends naturally first. Zone active since t=0, cap 7200 → `exceeded` is false at 7209 and true at 7210. It resets when `active_zone` changes or becomes nullopt.
   - **RainWindow:** 10 tips at t=0 with 0.2 mm/tip → 2.0. At t=86400+3600 → 0.0.
 - [ ] **Step 2:** CI: host-tests. Expected: FAIL.
 - [ ] **Step 3:** Implement the classes. The average flow used for learning is the mean of the `update` samples after settle.
@@ -538,7 +545,7 @@ ButtonCmd resolve_button(ButtonFn fn, const ButtonState& s);
 enum class LedMode : uint8_t { OFF, ON, SLOW_BLINK, FAST_BLINK };
 struct LedState { bool watering; bool rain_delay_or_hold; bool clock_valid; };
 LedMode led_mode(const LedState& s);                       // clock invalid > watering > rain > off
-bool led_level(LedMode m, uint32_t now_ms, uint32_t ack_until_ms); // ack flash overrides: on while now_ms < ack_until_ms
+bool led_level(LedMode m, uint32_t now_ms, uint32_t ack_until_ms); // ack = (int32_t)(ack_until_ms - now_ms) > 0 (wrap-safe); the ack inverts the base level, so ON with an ack gives off
 constexpr uint32_t kLedAckMs = 150;
 ```
 
@@ -549,7 +556,9 @@ constexpr uint32_t kLedAckMs = 150;
   - **Rain delay toggles:** inactive → `SET_RAIN_DELAY_24H`; active → `CLEAR_RAIN_DELAY`. Both are allowed while the controller is disabled.
   - **None:** `NONE` → `NONE` always.
   - **LED priority:** `{watering:true, rain:true, clock_valid:false}` → `FAST_BLINK`; `{true, true, true}` → `ON`; `{false, true, true}` → `SLOW_BLINK`; `{false, false, true}` → `OFF`.
-  - **LED timing:** `SLOW_BLINK` is on for `now_ms % 2000 < 1000`; `FAST_BLINK` for `now_ms % 400 < 200`; `OFF` with `ack_until_ms = now_ms + 1` → true; `ON` is always true.
+  - **LED timing:** `SLOW_BLINK` is on for `now_ms % 2000 < 1000`; `FAST_BLINK` for `now_ms % 400 < 200`; `OFF` with `ack_until_ms = now_ms + 1` → true; `ON` with no ack is true.
+  - **LED ack with watering:** `ON` with `ack_until_ms = now_ms + 1` → false (the flash shows while the LED is already on).
+  - **LED ack wrap:** `now_ms = 0xFFFFFFF0`, `ack_until_ms = 0x00000010` (ack still pending across the wrap) → ack active; `now_ms = 0x00000011` with the same `ack_until_ms` → ack expired, so `OFF` gives false.
 - [ ] **Step 2:** CI: host-tests. Expected: FAIL.
 - [ ] **Step 3:** Implement the functions above.
 - [ ] **Step 4:** CI: host-tests. Expected: PASS.
@@ -560,9 +569,9 @@ constexpr uint32_t kLedAckMs = 150;
 ### Task 6: ESPHome component glue and persistence
 
 **Files:**
-- Create: `esphome/irrigation-controller/components/irrigation_core/__init__.py`, `irrigation_core.h`, `irrigation_core.cpp`, `switch/__init__.py`
+- Create: `esphome/irrigation-controller/components/irrigation_core/__init__.py`, `irrigation_core.h`, `irrigation_core.cpp`, `switch/__init__.py`, `select/__init__.py`
 - Test fixtures: `tests/compile/core_expander.yaml`, `tests/compile/core_bad_pins.yaml`
-- Test: `tests/compile/core_minimal.yaml` (esp32c6, sntp time, 2 template switches as valves, sprinkler, `irrigation_core`)
+- Test: `tests/compile/core_minimal.yaml` (esp32c6, sntp time, 2 `irrigation_core` output switches as valves plus a master output switch, sprinkler, `irrigation_core`)
 
 **Interfaces:**
 - Consumes: all `logic/` APIs; `sprinkler::Sprinkler` (confirm `start_single_valve(size_t, optional<uint32_t>)`, `shutdown(bool)` and `active_valve()` in the pinned ESPHome source); `time::RealTimeClock`.
@@ -578,6 +587,8 @@ irrigation_core:
   expander_id: mcp_relays       # optional; enables MCP channel codes 100..115
   default_outputs: [1, 2, 3, 6, 7, 18]         # first-boot zone 1..N outputs
   default_master_output: 21
+  program_name_texts: [prog_name_1, prog_name_2]   # optional text ids (Task 8 merges the full lists); config_json reads names from them
+  zone_name_texts: [zone_name_1, zone_name_2]      # optional text ids (Task 8 merges the full lists)
   on_event:                     # Trigger<std::string, std::string>  variables: type, json
     - homeassistant.event: { event: esphome.irrigation_event, data: { node: "${name}", type: !lambda 'return type;', json: !lambda 'return json;' } }
 ```
@@ -588,6 +599,7 @@ irrigation_core:
   - Zones and settings:
     - `Zone& zone(uint8_t i); void save_zone(uint8_t i);`
     - `Settings& settings(); void save_settings();`
+    - `save_program`, `save_zone` and `save_settings` each emit `config_changed`, so the editors, the API actions, the zone count and the monthly % entities all keep the plan and backup fresh.
     - `Settings` = §5 Settings fields as a POD in `irrigation_core.h`, plus `int16_t master_output` and `bool relay_active_high` (default true, for the KS0011).
     - Button fields: `ButtonFn start_short_fn = RUN_PROGRAM, start_long_fn = NEXT_ZONE, stop_short_fn = STOP_ALL, stop_long_fn = RAIN_DELAY; uint8_t button_program = 0;`
   - Outputs (Task 5A logic):
@@ -600,11 +612,18 @@ irrigation_core:
     - `write_state` → `parent->write_output(slot, state)`, then `publish_state(state)`.
     - Hardware access: GPIO via ESP-IDF `gpio_config` and `gpio_set_level`. Expander via `expander->pin_mode(ch, gpio::FLAG_OUTPUT)` and `digital_write(ch, level)`; confirm these are public on the pinned `mcp23x17_base`.
     - The level written is `on == relay_active_high`.
+  - Output select platform `IrrigationOutputSelect : select::Select` (`select/__init__.py`):
+    - Config `slot: 1..16 | master`.
+    - Traits (options) come from `output_options(candidates, has_expander)`, and the current value is `output_label(code)`. A template select can't do this because its options must be static.
+    - `control(x)` calls `assign_zone_output` / `assign_master_output(parse_output_label(x))`. On error it re-publishes the old label, so HA snaps back.
+    - Task 7 (`Zone N Output`, `Master Output`) and Task 8 (`Zone Editor Output`) use it.
   - Setup: `setup_priority::HARDWARE`. Load NVS, then drive every assigned output to the off level **before** any other component starts. A failed load uses `default_outputs`/`default_master_output`.
   - Commands:
     - `void run_zone(uint8_t zone, uint32_t seconds); void run_program(uint8_t p); void stop_all();`
+    - `run_program` (button and API): program % × monthly % (weather 100), with no rain or weather skip checks. It refuses (WARN) when the controller is disabled, and enqueues with `manual=true` so a rain hold doesn't drop it. If `enqueue_program` returns false (duplicate, empty or full), log WARN.
+    - `stop_all()` calls `runner.stop_all`, then always `sprinkler.shutdown(true)`, so Stop also ends valves the Runner didn't start (e.g. a zone switched on from the web UI).
     - `void set_rain_delay_hours(uint16_t h); void set_weather_adjust(uint16_t pct, bool skip, const std::string& reason, uint16_t valid_hours);`
-    - `void learn_flow(uint8_t zone);`: baseline set to 0, then `run_zone(zone, 180)`.
+    - `void learn_flow(uint8_t zone);`: baseline set to 0, then `run_zone(zone, settings().flow_settle_s + 150)` (learning needs at least 120 s after settle).
     - `void rain_tip(); void set_rain_switch(bool raw_state);`
     - `void next_zone();`: `runner.stop_zone_with(Result::STOPPED, now)`.
     - `bool rain_delay_active() const; void clear_rain_delay();`
@@ -612,15 +631,19 @@ irrigation_core:
     - `bool status_led_level() const;`: `led_level(led_mode({...}), millis(), led_ack_until_ms_)`.
   - JSON getters:
     - `std::string plan_json(int days); std::string runlog_json(uint32_t since_seq);`
-    - `std::string config_json();`: programs, zones and settings, with keys mirroring the §5 field names. Outputs are emitted as `output_label` strings (`"output":"GPIO 1"`, `"master_output":"GPIO 21"`), so backup and restore round-trip through `set_zone` and `set_settings` unchanged.
+    - `std::string config_json();`: programs, zones and settings, with keys equal to the `set_program` / `set_zone` / `set_settings` argument names and units (Task 8): minutes, not seconds, and `days_until_first` computed as `(anchor − today) mod interval_days`.
+    - `name` comes from the name texts (`program_name_texts`, `zone_name_texts`).
+    - Outputs are emitted as `output_label` strings (`"output":"GPIO 1"`, `"master_output":"GPIO 21"`), so backup and restore round-trip through `set_program`, `set_zone` and `set_settings` unchanged.
   - Status getters:
     - `bool clock_valid() const; bool rain_hold() const; std::string status_text() const;`
     - `status_text` is one of `Idle`, `Watering <zone> (<program>)`, `Soaking`, `Rain delay`, `Rain hold`, `Clock not set`, `Disabled`.
   - Watering getters:
     - `uint16_t current_weather_pct() const; int32_t next_run_ts() const;`
     - `float zone_litres_total(uint8_t z) const; float total_litres() const;`
+    - `float rain_mm_24h() const; uint32_t remaining_s() const; std::string active_zone_name() const; std::string active_program_name() const; bool leak_active() const; bool flow_alarm_active() const;` (for `Rain Last 24h`, `Remaining Time`, `Active Zone`, `Active Program`, `Leak`, `Flow Alarm`)
 - Event `type` values and their `json` payloads:
-  - `run_started`: `record_json` with `act:0`.
+  - `run_started`: per-step `record_json` with `act:0`. History only; no notification maps to it.
+  - `program_started`: `{"inst":N,"p":P,"zones":n,"plan":total_s,"pct":N,"ts":T}`, emitted on the first step of each instance.
   - `run_finished`: `record_json`.
   - `skipped`: `record_json` with `z:255`.
   - `alert`: `{"kind":"flow_high|flow_low|leak|max_runtime|clock_invalid","z":N,"flow":x.x,"limit":y.y}`.
@@ -628,16 +651,16 @@ irrigation_core:
   - `config_changed`: `{}`.
   - `button`: `{"btn":"start|stop","press":"short|long","fn":N,"cmd":N}` (`cmd` 0 means the press was ignored).
 - Persistence:
-  - Use `global_preferences->make_preference<T>(fnv1_hash("irr_programs"|"irr_zones"|"irr_settings"|"irr_weather"|"irr_litres"), true)`. `save_*` calls `pref.save()` and then `global_preferences->sync()`.
+  - Use `global_preferences->make_preference<T>(fnv1_hash("irr_programs"|"irr_zones"|"irr_settings"|"irr_weather"|"irr_rain_delay"|"irr_litres"), true)`. `save_*` calls `pref.save()` and then `global_preferences->sync()`.
   - Litres are saved every 5 min while flow > 0, and at step end.
   - On first boot (load fails) use `default_program()`, `default_zone()` and the defaults in Settings §5.
 - `loop()` runs at 1 Hz:
   1. Build `LocalDateTime` from `time->now()` (`is_valid()`, `timestamp`, local fields → `days_from_civil`).
   2. Run `Scheduler::tick`. For each due start, compute the effective pct (month from local date, weather pct when `now < valid_until` and the program opts in), then `decide_start`.
      - On a skip, add a RunLog record with `z=255` and emit `skipped`.
-     - Otherwise run `expand_program` → `Runner::enqueue_program`.
-  3. `runner.loop`; `FlowMonitor::update` with flow L/min; on HIGH, `stop_zone_with(FLOW_HIGH)` if the zone action is ALERT_AND_STOP; emit an alert for every event.
-  4. `SafetyMonitor` on `sprinkler.active_valve()` with `zone_hard_cap_s` → `stop_all` + `max_runtime` alert.
+     - Otherwise run `expand_program` → `Runner::enqueue_program` (`manual=false`). If it returns false, log WARN (duplicate, empty or queue full).
+  3. `runner.loop`; `FlowMonitor::update` with flow L/min; on HIGH, `stop_zone_with(FLOW_HIGH)` if the zone action is ALERT_AND_STOP; on LOW with ALERT_AND_STOP, `stop_zone_with(FLOW_LOW)`; emit an alert for every event.
+  4. `SafetyMonitor` on `sprinkler.active_valve()` with `zone_hard_cap_s` → on a trip, `runner.stop_zone_with(MAX_RUNTIME)` when the Runner owns the step, else `sprinkler.shutdown(true)`; then raise the `max_runtime` alert.
   5. `runner.set_hold(rain_hold && rain_sensor_stops_running)`.
   6. Emit `clock_invalid` once per invalid period, 120 s after boot.
 - Litres are attributed to the zone from `active_valve()`, so manual HA valve toggles count too.
@@ -661,8 +684,8 @@ irrigation_core:
 
 **Files:**
 - Create: `esphome/irrigation-controller.yaml`, `esphome/secrets.yaml.example`, `esphome/irrigation-controller/{package,base,outputs,expander,sprinkler,core,sensors,status_led,settings}.yaml`
-- Modify: `.github/workflows/ci.yml` (job `esphome`: replace the smoke config with `tools/ci/esphome.sh`, which now also builds the wrapper with and without the expander)
-- Test: `tests/compile/with_expander.yaml` (the wrapper plus `expander.yaml`; `tools/ci/esphome.sh` builds it and the plain wrapper), `tests/ha/test_firmware_yaml.py` (static YAML assertions via a loader that ignores `!secret`/`!lambda` tags)
+- Modify: `tools/ci/esphome.sh` (now also builds the wrapper with and without the expander; before building it copies `esphome/secrets.yaml.example` to `esphome/secrets.yaml` and `tests/compile/secrets.yaml`, since `secrets.yaml` is git-ignored)
+- Test: `tests/compile/with_expander.yaml` (the wrapper plus `expander.yaml`, declaring its own `external_components`; `tools/ci/esphome.sh` builds it and the plain wrapper), `tests/ha/test_firmware_yaml.py` (static YAML assertions via a loader that ignores `!secret`/`!lambda` tags)
 
 **Interfaces:**
 - Consumes: Task 6 schema and methods.
@@ -676,12 +699,12 @@ irrigation_core:
     - `Rain Last 24h` (mm)
     - `Next Run` (timestamp)
     - `Remaining Time` (s)
-  - **Text sensors:** `Status`, `Active Zone`, `Active Program`, `Zone N Name` (mirror)
+  - **Text sensors:** `Status`, `Active Zone`, `Active Program`
   - **Binary sensors:** `Rain Hold`, `Leak`, `Flow Alarm`, `Clock Valid`, `HA Connected`
   - **Settings** (`entity_category: config`):
     - number `Zone Count` (1–16). Zones with output `None` are skipped by programs whatever the count.
-    - selects `Zone 1 Output`..`Zone 16 Output` and `Master Output`. Options come from `output_options(candidates, has_expander)`. The current value is `output_label(code)`.
-      - `set_action` calls `assign_*_output(parse_output_label(x))`. On an error the select re-publishes the old label, so HA snaps back.
+    - selects `Zone 1 Output`..`Zone 16 Output` and `Master Output`: `select: platform: irrigation_core` (slot 1..16 | master, Task 6), declared in `outputs.yaml`. Options come from `output_options(candidates, has_expander)`. The current value is `output_label(code)`.
+      - `control()` calls `assign_*_output(parse_output_label(x))`. On an error the select re-publishes the old label, so HA snaps back.
     - select `Relay Trigger Level` (Active high, Active low), default Active high
     - text sensor `Last Error`, which shows `pin_error_text` + slot names, e.g. `Zone 2: GPIO 21 already assigned to Master`
     - numbers `Monthly Adjust Jan`..`Dec` (0–200 %)
@@ -712,10 +735,10 @@ irrigation_core:
   - `api` with encryption from secrets and `reboot_timeout: 0s`; `wifi` with `reboot_timeout: 0s` and a fallback AP
   - `web_server: version: 3`, `ota`, `logger`
   - `preferences: flash_write_interval: 5min`
-  - `time:` with `homeassistant` + `sntp` (id `local_time`, `timezone: ${timezone}`); `i2c` on SDA 19 / SCL 20
+  - `time:` with `homeassistant` + `sntp` (id `local_time`, `timezone: ${timezone}`); `i2c` on `${sda_pin}` / `${scl_pin}`
   - `ds1307` RTC (works with DS3231) behind substitution `rtc_enabled`. Its `on_time_sync` on sntp calls `ds1307.write_time`, and `on_boot` calls `ds1307.read_time`.
 - [ ] **Step 3:** Write the output packages:
-  - `outputs.yaml` declares `switch: - platform: irrigation_core` with ids `zone_out_1..16` (`slot: 1..16`) and `master_out` (`slot: master`).
+  - `outputs.yaml` declares `switch: - platform: irrigation_core` with ids `zone_out_1..16` (`slot: 1..16`) and `master_out` (`slot: master`), plus the matching `select: - platform: irrigation_core` entries (`Zone N Output`, `Master Output`).
   - `expander.yaml` declares `mcp23017: - id: mcp_relays, address: 0x20` and `irrigation_core: expander_id: mcp_relays`. ESPHome's package merge folds this into the core block.
   - Board substitutions, defined in the wrapper and passed to `core.yaml`:
     - `output_candidates: "1, 2, 3, 6, 7, 18, 21"`
@@ -727,7 +750,7 @@ irrigation_core:
   - No `multiplier_number`; the core owns run times.
 - [ ] **Step 5:** Write `sensors.yaml`:
   - `pulse_counter` on `${flow_pin}` with `internal_filter: 13us`, `update_interval: 1s` and `total`.
-  - Template `flow_rate` = pulses × 60 / `settings().pulses_per_litre`.
+  - `pulse_counter` reports pulses/min, so template `flow_rate` (L/min) = `pulses_per_min / settings().pulses_per_litre`.
   - Rain `${rain_pin}` binary sensor (`allow_other_uses: true`) → `id(irr).set_rain_switch(x)`; the same binary sensor's `on_press` (filter `delayed_on: 50ms`) → `id(irr).rain_tip()`. The core ignores tips unless the type is Tipping, and ignores the switch state when it is Tipping or None.
   - Start `${start_pin}` and Stop `${stop_pin}` binary sensors: pin `mode: { input: true, pullup: true }` and `inverted: true`, filter `delayed_on_off: 50ms`. Each has `on_multi_click`:
     - short: `ON for at most 1s` then `OFF for at least 50ms` → `id(irr).button_press(is_start, false)`
@@ -735,13 +758,14 @@ irrigation_core:
   - Write `status_led.yaml`: a `gpio` output on `${led_pin}` and an `interval: 50ms` lambda that writes `id(irr).status_led_level()`. It is a commented-out include in `package.yaml`, like `expander`.
 - [ ] **Step 6:** Write `core.yaml` (the `irrigation_core` block, status sensors with `update_interval: 5s` lambdas) and `settings.yaml`. 
   - Write `irrigation-controller/package.yaml` with `packages:` `!include` entries for base, outputs, sprinkler, core, sensors, settings, editor_program, editor_zone and api_actions. Leave the last three commented out until Task 8. `expander` and `status_led` are commented-out entries; the wrapper explains when to uncomment them ("fit an MCP23017 for more than 6 zones", "fit an LED on `led_pin`"). The `with_expander.yaml` fixture also includes `status_led.yaml`, so CI compiles both.
-  - It also holds `external_components: - source: { type: local, path: components }`.
+  - It holds no `external_components`: the wrapper declares them (Option A local path, Option B GitHub), and `tests/compile/with_expander.yaml` declares its own.
+  - Write `esphome/secrets.yaml.example` with a valid dummy base64 `api_key` (never a real value).
   - Write the wrapper `irrigation-controller.yaml`, modelled on ESPyRain's `espyrain_controller_wrapper.yaml`:
     - A header comment block tells the user what to change: secrets, board, timezone, static IP, sensor pins and the expander include. It also says relay outputs are **not** set here; they are set in HA under Settings → Hardware.
-    - Then come substitutions `name`, `friendly_name`, `timezone`, `rtc_enabled` and `version: "0.1.0"`, and `esphome: project: { name: "joeyjojo747.irrigation-controller", version: "${version}" }`.
-    - **Option A (default, local copy):** `packages: irrigation: !include irrigation-controller/package.yaml`.
+    - Then come substitutions `name`, `friendly_name`, `timezone`, `rtc_enabled`, `version: "0.1.0"` and all the board substitutions listed under Step 3 (`output_candidates`, `flow_pin`, `rain_pin`, `start_pin`, `stop_pin`, `led_pin`, `sda_pin`, `scl_pin`, `default_outputs`, `default_master_output`), and `esphome: project: { name: "joeyjojo747.irrigation-controller", version: "${version}" }`.
+    - **Option A (default, local copy):** `packages: irrigation: !include irrigation-controller/package.yaml`, plus `external_components: - source: { type: local, path: irrigation-controller/components }`.
     - **Option B (remote, commented out):** `packages: irrigation: github://joeyjojo747/esphome_irrigation_controller/esphome/irrigation-controller/package.yaml@v${version}`, plus `external_components: - source: github://joeyjojo747/esphome_irrigation_controller@v${version}` with `path: esphome/irrigation-controller/components` and `components: [irrigation_core]`.
-- [ ] **Step 7:** CI: ha-tests and esphome. Expected: 7 passed; both builds `SUCCESS`.
+- [ ] **Step 7:** CI: ha-tests and esphome. Expected: `test_firmware_yaml.py`: 7 passed (8 with `test_smoke` across `tests/ha`); both builds `SUCCESS`.
 - [ ] **Step 8:** Commit `feat(fw): device packages with runtime-mapped outputs`.
 
 ---
@@ -755,7 +779,8 @@ irrigation_core:
 **Interfaces:**
 - Consumes: Task 6 methods and Task 7 settings pattern.
 - **Program editor** entities (prefix `Program Editor`; all `entity_category: config` except Save/Revert):
-  - select `Program Editor Program` (A–H): loads the buffer from `program(i)`; a template text `Program N Name` exists per program.
+  - select `Program Editor Program` (A–H): loads the buffer from `program(i)`.
+  - template texts `Program 1 Name`..`Program 8 Name` (max 24, `restore_value`, ids `prog_name_N`): created here. `editor_program.yaml` merges `irrigation_core: program_name_texts: [...]` into the core block so `config_json` can read them.
   - switch `Program Editor Enabled`
   - select `Program Editor Day Mode` (Weekdays, Odd days, Even days, Every N days)
   - switches `Program Editor Mon`..`Sun`
@@ -765,10 +790,11 @@ irrigation_core:
   - number `Program Editor Seasonal Adjust` (0–200 %)
   - switches `Program Editor Cycle Soak` and `Program Editor Weather Adjust`
   - buttons `Program Editor Save` and `Program Editor Revert`
-  - The buffer is a `globals` `irrigation::Program` held in RAM. Save copies it into `program(i)`, calls `save_program` and `set_program_interval_offset`, and emits `config_changed`.
+  - The buffer is a `globals` `irrigation::Program` held in RAM. Save copies it into `program(i)`, calls `set_program_interval_offset` and `save_program` (which emits `config_changed`).
 - **Zone editor** entities (prefix `Zone Editor`):
   - select `Zone Editor Zone` (1–16)
-  - text `Zone Editor Name` (max 24): writes the `Zone N Name` text, which uses `restore_value`
+  - template texts `Zone 1 Name`..`Zone 16 Name` (max 24, `restore_value`, ids `zone_name_N`): created here. `editor_zone.yaml` merges `irrigation_core: zone_name_texts: [...]` into the core block.
+  - text `Zone Editor Name` (max 24): writes the `Zone N Name` text
   - switch `Zone Editor Enabled`
   - selects `Zone Editor Head Type`, `Zone Editor Soil`, `Zone Editor Sun` and `Zone Editor Plant`; labels are the enum names in title case
   - numbers:
@@ -780,15 +806,15 @@ irrigation_core:
     - `Zone Editor Flow Baseline` (0–200 L/min)
     - `Zone Editor High Flow` (100–300 %) and `Zone Editor Low Flow` (0–100 %)
   - select `Zone Editor Flow Action` (Alert, Alert and stop)
-  - select `Zone Editor Output`: same options and validation as `Zone N Output`. It applies immediately when changed, not on Save, because a pin change must stop watering and re-drive the hardware.
+  - select `Zone Editor Output`: the `irrigation_core` select platform (Task 6), same options and validation as `Zone N Output`. It applies immediately when changed, not on Save, because a pin change must stop watering and re-drive the hardware.
   - buttons `Zone Editor Save`, `Zone Editor Revert`, `Zone Editor Learn Flow` and `Zone Editor Test Run` (3 min)
 - **API actions** (`api: actions:`), argument names exact:
   - `run_zone(zone:int 1-based, minutes:int)`, `run_program(program:int 0-7)`, `stop_all()`
   - `rain_delay(hours:int)`
   - `set_weather_adjust(pct:int, skip:bool, reason:string, valid_hours:int)`
-  - `set_program(program:int, enabled:bool, mode:int, weekday_mask:int, interval_days:int, days_until_first:int, starts:int[] (minutes, -1 unused), zone_minutes:int[], seasonal_pct:int, cycle_soak:bool, weather_adjust:bool)`
+  - `set_program(program:int, name:string, enabled:bool, mode:int, weekday_mask:int, interval_days:int, days_until_first:int, starts:int[] (minutes, -1 unused), zone_minutes:int[], seasonal_pct:int, cycle_soak:bool, weather_adjust:bool)`
   - `set_zone(zone:int 1-based, name:string, enabled:bool, head:int, precip:float, soil:int, slope:int, sun:int, plant:int, area:float, max_cycle_min:int, soak_min:int, baseline:float, high_pct:int, low_pct:int, action:int, output:string)`: `output` is an `output_label`; `""` leaves the output unchanged. A validation error rejects the whole call (WARN, `Last Error` set, nothing changed).
-  - `set_settings(zone_count:int, controller_enabled:bool, monthly_pct:int[] (12), pulses_per_litre:float, leak_lpm:float, settle_s:int, rain_type:int, mm_per_tip:float, rain_skip_mm:float, rain_stops:bool, hard_cap_min:int, start_short_fn:int, start_long_fn:int, stop_short_fn:int, stop_long_fn:int, button_program:int, master_output:string, relay_active_high:bool)`: a `monthly_pct` array that isn't 12 long is rejected (WARN, no change).
+  - `set_settings(zone_count:int, controller_enabled:bool, monthly_pct:int[] (12), pulses_per_litre:float, leak_lpm:float, settle_s:int, rain_type:int, mm_per_tip:float, rain_skip_mm:float, rain_stops:bool, hard_cap_min:int, start_short_fn:int, start_long_fn:int, stop_short_fn:int, stop_long_fn:int, button_program:int, master_output:string, relay_active_high:bool)`: a `monthly_pct` array that isn't 12 long, or an invalid `master_output`, rejects the whole call (WARN, `Last Error` set, nothing changed), the same as `set_zone`.
   - Response actions (`supports_response: only`): `get_plan(days:int)` → `{"plan": <plan_json>}`, `get_run_log(since:int)` → `{"records": <runlog_json>, "last": N}`, `get_config()` → `<config_json>`.
   - Out-of-range arguments are clamped, and they are logged at WARN.
 
@@ -796,7 +822,7 @@ irrigation_core:
   - `test_actions_present` checks the exact action names above.
   - `test_editor_save_buttons` checks that both Save buttons exist.
   - CI: ha-tests. Expected: FAIL.
-- [ ] **Step 2:** Write the three packages. Action lambdas write through `program(i)`, `zone(i)` and `settings()` and then call the matching `save_*`; `set_program`/`set_zone` also emit `config_changed`.
+- [ ] **Step 2:** Write the three packages. Action lambdas write through `program(i)`, `zone(i)` and `settings()` and then call the matching `save_*`, which emits `config_changed` (so `set_program`, `set_zone`, `set_settings` and both editors' Save all do).
 - [ ] **Step 3:** CI: ha-tests and esphome. Expected: PASS; both `SUCCESS`.
 - [ ] **Step 4:** Commit `feat(fw): program/zone editors and api actions`.
 
@@ -824,10 +850,10 @@ irrigation_core:
   7. A signal-generator or fan on the flow input with no zone on gives a Leak alert after drain + hold time.
   8. Zone Runtime Limit at 5 min with a manual 10 min run stops at 5 min and raises a `max_runtime` alert.
   9. Change the Zone Count from 6 to 3 without a reflash; zones 4–6 are excluded from programs (`get_plan` totals drop).
-  10. **Output change stops watering.** While Zone 1 waters on GPIO 1, set `Zone 1 Output` to `GPIO 2` in HA and move the relay IN wire to GPIO 2.
+  10. **Output change stops watering.** First set `Zone 2 Output` to `None` (GPIO 2 is Zone 2's default). While Zone 1 waters on GPIO 1, set `Zone 1 Output` to `GPIO 2` in HA and move the relay IN wire to GPIO 2.
       - Watering stops and is logged `stopped`. The relay on GPIO 1 stays **off**; check with a multimeter that GPIO 1 reads ≈ 0 V.
       - A test run then clicks the relay on GPIO 2. All of this happens with no reflash.
-  11. **Validation.** Setting `Zone 2 Output` to `GPIO 2` (taken) or to `MCP A0` with no expander snaps the select back. `Last Error` shows the reason.
+  11. **Validation.** Setting `Zone 2 Output` to `GPIO 2` (now taken by Zone 1 after item 10) or to `MCP A0` with no expander snaps the select back. `Last Error` shows the reason.
   12. **Trigger level.** Switching `Relay Trigger Level` to Active low turns every relay **on** while idle, which shows the level change took effect; switching back to Active high turns them off. Record the result. Install docs must tell users with active-low boards to set this before wiring solenoids.
   13. **Boot state.** Power-cycle 5 times with Zone 1 mapped to GPIO 1 and watch the relay LED. Expected: no click or flash at boot. If it glitches, add a 10 k pull-down from IN to GND to the install docs.
   14. **Buttons with HA offline.** Set Program A to zones 1–2 at 2 min each, wire Start to GPIO 10, Stop to GPIO 14 and the LED to GPIO 11 (with `status_led.yaml` included), then stop HA Core (or power off the AP).
@@ -837,7 +863,7 @@ irrigation_core:
       - A long Stop press sets a 24 h rain delay (LED slow blink); a second long press clears it.
       - After HA is back, the runs appear in `get_run_log` and the calendar.
   15. **Stop always works.** With `Controller Enabled` off, a short Start press does nothing, but a Stop press during a manual zone run from the web UI still stops it.
-  16. **Functions from HA.** Set `Start Button Short Press` to Stop All in HA, then disconnect Wi-Fi and power-cycle. A short Start press now stops watering, which shows the setting was kept in NVS. Set it back to Run Program.
+  16. **Functions from HA.** Set `Start Button Short Press` to Stop All in HA, then disconnect Wi-Fi and power-cycle. With the DS3231 fitted, start Zone 1 from the device web UI over the fallback AP (or let a due program start), then press Start. A short Start press now stops watering, which shows the setting was kept in NVS. Set it back to Run Program.
 - [ ] **Step 4:** Commit `docs: install wiring and bench test results`.
 
 ---
@@ -847,7 +873,7 @@ irrigation_core:
 **Files:**
 - Create: `packages/irrigation/irrigation_helpers.yaml`
 - Create: `tests/ha/conftest.py`, `tests/ha/test_helpers_pkg.py`, `tests/ha/config/configuration.yaml` (minimal config: `homeassistant: packages: !include_dir_named ../../../packages/irrigation`, `default_config:` omitted)
-- Modify: `.github/workflows/ci.yml` (job `ha-tests` adds `python -m homeassistant --script check_config -c tests/ha/config`)
+- Modify: `tools/ci/ha-tests.sh` (adds `python -m homeassistant --script check_config -c tests/ha/config`)
 
 **Interfaces:**
 - HA loads the package with one line in `configuration.yaml`, added once at install: `homeassistant: packages: !include_dir_named packages/irrigation`. Every later task adds one file to `packages/irrigation/`.
@@ -873,7 +899,7 @@ irrigation_core:
 - `tests/ha/conftest.py` provides these fixtures:
   - `pkg_hass`: loads every `packages/irrigation/*.yaml` with `homeassistant.util.yaml.load_yaml`, merges them with `homeassistant.config.merge_packages_config`, and sets up each domain present (`input_*`, `template`, `script`, `automation`, `utility_meter`).
   - `device`: registers mock `esphome.irrigation_controller_*` services with `SupportsResponse`. Calls are recorded in `device.calls[action]` and responses are set with `device.respond(action, dict)`. It also enforces DUPLICATE on `set_zone` outputs, for the Task 11 restore test.
-  - `mocks`: mock `weather.get_forecasts`, `ai_task.generate_data`, `conversation.process`, `calendar.create_event` and `notify.mobile_app_test`, each with a settable response and a call list.
+  - `mocks`: mock `weather.get_forecasts`, `ai_task.generate_data`, `conversation.process`, `calendar.create_event`, `notify.mobile_app_test` and `notify.mobile_app_test2`, each with a settable response and a call list.
 
 - [ ] **Step 1:** Write `test_helpers_pkg.py`:
   - `test_helpers_defaults`: after `pkg_hass`, `input_number.irrigation_rain_skip_mm == 3.0`, `input_select.irrigation_ai_mode == "Off"` and `input_boolean.irrigation_notify_run_started == off`.
@@ -881,7 +907,7 @@ irrigation_core:
   - `test_package_version_matches`: the helper matches `VERSION`.
 - [ ] **Step 2:** CI: ha-tests. Expected: FAIL (package missing).
 - [ ] **Step 3:** Write the helpers file and the minimal test config.
-- [ ] **Step 4:** CI: ha-tests. Expected: 3 passed and `check_config` reports no errors.
+- [ ] **Step 4:** CI: ha-tests. Expected: `test_helpers_pkg.py`: 3 passed (the `tests/ha` suite totals 1 + 7 + 2 + 3 = 13 with `test_smoke`, Task 7 and Task 8's tests) and `check_config` reports no errors.
 - [ ] **Step 5:** Commit `feat(ha): irrigation package helpers and test harness`.
 
 ---
@@ -897,12 +923,12 @@ irrigation_core:
   - Trigger: event `esphome.irrigation_event` with `event_data.node == "irrigation-controller"`.
   - It parses `trigger.event.data.json | from_json` and re-fires `irrigation_<type>`, with the parsed payload as event data, for Tasks 12–17 to consume.
   - For `run_finished` and `skipped`, it advances `irrigation_last_ts` / `irrigation_last_seq` when `(ts, seq)` is newer.
-  - For `config_changed`, it runs `script.irrigation_refresh_plan` (Task 12) and `script.irrigation_backup_config`.
+  - For `config_changed`, it runs `script.irrigation_refresh_plan` (Task 12; only `if` that script entity exists, else skipped, or its tests register a stub script) and `script.irrigation_backup_config`. The backup is skipped while `script.irrigation_restore_config` is `on`, so a restore can't overwrite its own backup.
 - **Script `irrigation_sync_runlog`:**
   - Calls `get_run_log(since: 0)` with a response. A device reboot resets `seq`, so it filters by time, not seq.
   - For every record with `ts > last_ts`, or `ts == last_ts and seq > last_seq`, in ascending order, it fires `irrigation_replayed_record` and advances the helpers.
-  - It then fires `irrigation_replay_done` with the replayed records grouped by `inst`: `{inst, p, zones, act, l, warn, ts}`.
-- **Automation `irrigation_reconnect`:** when `sensor.irrigation_status` changes from `unavailable` to any other state, it runs `irrigation_sync_runlog` and then `irrigation_refresh_plan`.
+  - It then fires `irrigation_replay_done` with the replayed records grouped by `inst`: `{inst, p, zones, act, l, warn, ts}`. Records whose `r` starts with `skipped_` (`z=255`, no runner instance) are excluded from the groups; they still go out as `irrigation_replayed_record`.
+- **Automation `irrigation_reconnect`:** when `sensor.irrigation_status` changes from `unavailable` to any other state, it runs `irrigation_sync_runlog` and then `irrigation_refresh_plan` (the latter `if` that script entity exists, else skipped, or its tests register a stub script).
 - **Run history:** trigger-based template sensor `sensor.irrigation_run_history`. It triggers on `irrigation_run_finished` and `irrigation_replayed_record`.
   - Attribute `records`: the last 7 days of records, capped at 300.
   - State: the record count.
@@ -910,8 +936,9 @@ irrigation_core:
 - **Backup and restore:**
   - Script `irrigation_backup_config` calls `get_config` and fires `irrigation_config_backup`.
   - Trigger template sensor `sensor.irrigation_config_backup`: state = backup time, attribute `config` = the JSON object. It is restored across restarts and included in HA backups.
-  - Script `irrigation_restore_config` replays `config` in this order:
-    1. `set_zone` ×16 with only `output: "None"`
+  - `config` keys equal the action argument names and units (Task 6 `config_json`), so values pass straight through.
+  - Script `irrigation_restore_config` copies `config` into a variable at start, replays it in this order, and calls `irrigation_backup_config` once at the end:
+    1. `set_zone` ×16 with the full backup values but `output: "None"`
     2. `set_settings`
     3. `set_program` ×8
     4. `set_zone` ×16 with full values
@@ -921,8 +948,10 @@ irrigation_core:
   - `test_router_ignores_other_nodes`
   - `test_replay_after_outage`: helpers at ts 1000, seq 5; the device returns seq 1–3 with ts 900/1100/1200; exactly 2 records are replayed and last_ts becomes 1200.
   - `test_replay_groups_by_instance`
+  - `test_replay_excludes_skipped_from_groups`: replayed `skipped_*` records are still fired as `irrigation_replayed_record` but appear in no `irrigation_replay_done` group.
   - `test_history_capped_and_7_days`
-  - `test_backup_restore_roundtrip`: the call counts are 32 `set_zone`, 1 `set_settings` and 8 `set_program`, in the order above; the final arguments equal the backup.
+  - `test_backup_restore_roundtrip`: the call counts are 32 `set_zone`, 1 `set_settings` and 8 `set_program`, in the order above; the final arguments equal the backup (keys already equal the action arguments).
+  - `test_restore_does_not_overwrite_backup`: `config_changed` events fired during a restore don't run `irrigation_backup_config`; one backup runs at the end and the backup sensor still holds the original config.
   - `test_restore_swapped_outputs`: the device fixture enforces DUPLICATE, and every call is accepted.
 - [ ] **Step 2:** CI: ha-tests. Expected: FAIL.
 - [ ] **Step 3:** Write `irrigation_sync.yaml`.
@@ -943,9 +972,10 @@ irrigation_core:
 - **Automation `irrigation_calendar_writer`:**
   - **`irrigation_program_finished`** (live) and each `irrigation_replay_done` group create an event:
     - start = `ts`, end = `ts + act`
-    - summary `"{name} · {zones} zones · {round(act/60)} min · {l|round(0)} L"`, with `" ⚠"` appended when `warn`
+    - summary `"{name} · {zones} zones · {(act/60)|round(0)|int} min · {l|round(0)|int} L"`, with `" ⚠"` appended when `warn`
     - `{name}` is `Program X` (A–H), or the program's name from `sensor.irrigation_config_backup` when it is set; `Manual` for `p == 255`
   - **`irrigation_skipped`** creates a 15-min event `"{name} skipped — {label}"`. The labels are `rain sensor`, `rain delay`, `weather` and `controller off`.
+  - Each `irrigation_replayed_record` whose `r` starts with `skipped_` also creates the same skip event (Task 11 keeps these out of the replay groups).
 - **Script `irrigation_refresh_plan`:**
   - Calls `get_plan(days: 14)` and fires `irrigation_plan`.
   - Trigger template sensor `sensor.irrigation_upcoming` (device_class `timestamp`): state = the next start as local ISO, or `unknown`. Attribute `runs` = `[{program, name, start (ISO local), minutes, pct}]`.
@@ -957,6 +987,7 @@ irrigation_core:
   - `test_skipped_event_label`
   - `test_manual_named_manual`
   - `test_replay_groups_create_one_event_each`
+  - `test_replayed_skip_creates_skip_event`
   - `test_upcoming_sensor_from_plan`: plan item `{"p":0,"date":"2026-11-03","start":"06:00","s":480,"pct":80}` in `Australia/Sydney` gives state `2026-11-03T06:00:00+11:00` and minutes 8.
 - [ ] **Step 2:** CI: ha-tests. Expected: FAIL.
 - [ ] **Step 3:** Write the package file.
@@ -972,7 +1003,7 @@ irrigation_core:
 - Test: `tests/ha/test_weather_pkg.py`
 
 **Interfaces:**
-- **Script `irrigation_evaluate_weather`** (`response_variable`). It returns `{skip: bool, pct: int|null, reason: str, inputs: {...}}`.
+- **Script `irrigation_evaluate_weather`** (`response_variable`). It returns `{skip: bool, pct: int|null, reason: str, inputs: {...}}`. A skip returns `pct: 0`; `pct: null` is reserved for unavailable weather ("push nothing").
   - It calls `weather.get_forecasts` (`type: daily`) on `states('input_text.irrigation_weather_entity')` and takes today's entry: `templow`, `temperature`, `precipitation`, `precipitation_probability`, `wind_speed`.
   - Observed 24 h rain comes from `input_text.irrigation_rain_obs_entity`, if one is set.
   - The cumulative total is taken from `sensor.irrigation_rain_history`, the sum of the last `cumulative_days` values. That is a trigger template that snapshots the observation sensor daily at 08:59 and keeps 14 days.
@@ -987,12 +1018,12 @@ irrigation_core:
 - **Automation `irrigation_daily_adjust`:**
   - Trigger: time `input_datetime.irrigation_eval_time`.
   - It runs evaluate. If `pct` is null, it fires `irrigation_decision` with the error and **pushes nothing**.
-  - Otherwise it runs `script.irrigation_ai_advice` (Task 14, which returns the final decision), then calls `set_weather_adjust(pct, skip, reason, valid_hours)` and fires `irrigation_decision`.
+  - Otherwise it runs `script.irrigation_ai_advice` (Task 14, which returns the final decision) only `if` that script entity exists, else it uses the rule decision, then calls `set_weather_adjust(pct, skip, reason, valid_hours)` and fires `irrigation_decision`.
 - Trigger template `sensor.irrigation_weather_decision`: state = `skip` or the pct; attributes `reason`, `inputs`, `pushed_at` and `ai_applied`.
 - BOM entities come from the HACS `bremor/bureau_of_meteorology` integration. Any weather entity with daily forecasts works.
 
 - [ ] **Step 1: Write the failing tests.** Each case is a script call with mocked forecasts:
-  - rain 2.5 obs + 1.0 forecast → skip, `"Rain 3.5 mm (24h + forecast)"`
+  - rain 2.5 obs + 1.0 forecast → skip, `pct == 0`, `"Rain 3.5 mm (24h + forecast)"`
   - prob 85 / 2.0 mm → skip; prob 85 / 1.0 mm → none
   - min 1.5 → `"Frost risk 1.5°C"`; 2.1 → none
   - wind 35 → none by default; with `irrigation_wind_enabled` on → `"Wind 35 km/h"`
@@ -1062,7 +1093,7 @@ irrigation_core:
   - Intake (mm/h): SAND 50, LOAMY_SAND 30, SANDY_LOAM 25, LOAM 13, CLAY_LOAM 8, CLAY 5.
   - Slope factor: <5 % → 1.0, <8 % → 0.8, ≤12 % → 0.6, >12 % → 0.4.
   - `cycle = max(3, floor(intake × factor / precip × 60))`; `soak = clamp(cycle × 2, 20, 60)`. If cycle ≥ 60, return `(0, 0)`.
-- When `apply` is true, it calls `set_zone` with the current zone values and the new `max_cycle_min` and `soak_min`.
+- When `apply` is true, it calls `set_zone` with the current zone values (backup `config` keys equal the action argument names, so they pass through unchanged) and the new `max_cycle_min` and `soak_min`.
 
 - [ ] **Step 1: Write the failing tests:**
   - LOAM/0/40 → (19, 38)
@@ -1114,7 +1145,7 @@ irrigation_core:
   - Non-critical categories are suppressed between `irrigation_quiet_start` and `irrigation_quiet_end`, a window that may wrap past midnight. `CRITICAL = flow_high, leak, max_runtime`.
   - For each name in `irrigation_notify_targets` it calls `notify.<name>` with `{title, message}`. Critical messages add `data: {push: {interruption-level: critical}}` for `mobile_app_*` targets.
 - **Automation `irrigation_notifications`** maps events to categories. Titles and messages are the **exact** copy from design §8, rendered in Jinja.
-  - `irrigation_run_started` → `run_started`; `irrigation_program_finished` → `run_finished` (cost = `l` × tariff / 1000); `irrigation_skipped` → `skipped`
+  - `irrigation_program_started` → `run_started` (copy uses `{zones}`, `{minutes}` = `plan`/60 and `{pct}` from the event); `irrigation_program_finished` → `run_finished` (cost = `l` × tariff / 1000); `irrigation_skipped` → `skipped`
   - `irrigation_alert` → its `kind`: `flow_high`, `flow_low`, `leak`, `max_runtime` or `clock_invalid`
   - `irrigation_advice` → `daily_advice`
   - `sensor.irrigation_status` → `unavailable` held `for: minutes: "{{ states('input_number.irrigation_offline_minutes')|int }}"` → `offline`. This fires once per outage.
