@@ -1,0 +1,49 @@
+#include "buttons.h"
+
+namespace irrigation {
+
+ButtonCmd resolve_button(ButtonFn fn, const ButtonState& s) {
+  switch (fn) {
+    case ButtonFn::STOP_ALL:
+      return ButtonCmd::STOP_ALL;
+    case ButtonFn::RUN_PROGRAM:
+      return (!s.busy && s.controller_enabled) ? ButtonCmd::RUN_PROGRAM : ButtonCmd::NONE;
+    case ButtonFn::NEXT_ZONE:
+      return s.busy ? ButtonCmd::NEXT_ZONE : ButtonCmd::NONE;
+    case ButtonFn::RAIN_DELAY:
+      return s.rain_delay_active ? ButtonCmd::CLEAR_RAIN_DELAY : ButtonCmd::SET_RAIN_DELAY_24H;
+    case ButtonFn::NONE:
+    default:
+      return ButtonCmd::NONE;
+  }
+}
+
+LedMode led_mode(const LedState& s) {
+  if (!s.clock_valid) return LedMode::FAST_BLINK;
+  if (s.watering) return LedMode::ON;
+  if (s.rain_delay_or_hold) return LedMode::SLOW_BLINK;
+  return LedMode::OFF;
+}
+
+bool led_level(LedMode m, uint32_t now_ms, uint32_t ack_until_ms) {
+  bool base = false;
+  switch (m) {
+    case LedMode::ON:
+      base = true;
+      break;
+    case LedMode::SLOW_BLINK:
+      base = (now_ms % 2000) < 1000;
+      break;
+    case LedMode::FAST_BLINK:
+      base = (now_ms % 400) < 200;
+      break;
+    case LedMode::OFF:
+    default:
+      base = false;
+      break;
+  }
+  const bool ack = static_cast<int32_t>(ack_until_ms - now_ms) > 0;
+  return ack ? !base : base;
+}
+
+}  // namespace irrigation
