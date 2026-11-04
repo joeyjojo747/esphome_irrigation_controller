@@ -30,14 +30,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+        id: py
         with:
           python-version: "3.13"
       - run: pip install -r tools/requirements-esphome.txt
       - uses: actions/cache@v4
         with:
-          path: |
-            ~/.platformio
-            tests/compile/.esphome
-          key: esphome-${{ hashFiles('tools/requirements-esphome.txt', 'tests/compile/*.yaml') }}
-          restore-keys: esphome-
+          # Do NOT cache tests/compile/.esphome: its CMakeCache/build.ninja embed
+          # the absolute path of the python/ninja that created it, which breaks
+          # when the runner image bumps patch Python (3.13.17 -> 3.13.18):
+          # "ninja --version failed: no such file or directory".
+          path: ~/.platformio
+          key: esphome-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('tools/requirements-esphome.txt') }}
       - run: tools/ci/esphome.sh
