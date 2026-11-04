@@ -109,3 +109,20 @@ TEST_CASE("fires again next day") {
   CHECK(s.tick({d, 1439}, true, ps).empty());
   CHECK(s.tick({d + 1, 0}, true, ps).size() == 1);  // midnight rollover
 }
+
+TEST_CASE("reset_program lets an edited start fire again the same day") {
+  Program ps[kPrograms]; init(ps); ps[0] = daily_at(360); ps[1] = daily_at(360);
+  Scheduler s; int32_t d = days_from_civil(2026, 11, 2);
+  s.tick({d, 359}, true, ps);
+  REQUIRE(s.tick({d, 360}, true, ps).size() == 2);
+  // Both programs move their start later the same day; only program 0 is reset.
+  ps[0].start_minutes[0] = 420;
+  ps[1].start_minutes[0] = 420;
+  s.reset_program(0);
+  s.reset_program(200);  // out of range: ignored
+  s.tick({d, 419}, true, ps);
+  auto due = s.tick({d, 420}, true, ps);
+  REQUIRE(due.size() == 1);
+  CHECK(due[0].program == 0);
+  CHECK(s.tick({d, 421}, true, ps).empty());
+}
