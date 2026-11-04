@@ -98,7 +98,6 @@ void Runner::set_hold(bool hold, uint32_t now_s) {
   if (front_dropped) {
     if (state_ == State::RUNNING) {
       driver_->stop_all();
-      Instance& inst = queue_.front();
       finish_step(Result::STOPPED, now_s, true);
     } else {
       end_instance_front();
