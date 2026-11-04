@@ -71,7 +71,7 @@ struct Zone {
   uint16_t max_cycle_s;
   uint16_t soak_s;
   float flow_baseline_lpm;
-  uint8_t flow_high_pct;
+  uint16_t flow_high_pct;  // 100..300
   uint8_t flow_low_pct;
   FlowAction flow_action;
   int16_t output;

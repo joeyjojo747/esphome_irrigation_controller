@@ -1,0 +1,138 @@
+# Home Assistant actions: esphome.irrigation_controller_<action>. Argument names and
+# units match the keys of config_json, so a get_config backup restores through
+# set_program / set_zone / set_settings unchanged. Programs are 0-7 (A-H), zones
+# are 1-based. Out-of-range values are clamped by the core with a WARN; an invalid
+# index, array length or output label rejects the whole call (WARN, Last Error,
+# nothing changed). The editors and settings entities reload after each set_*.
+api:
+  actions:
+    - action: run_zone
+      variables:
+        zone: int
+        minutes: int
+      then:
+        - lambda: |-
+            id(irr).api_run_zone(zone, minutes);
+    - action: run_program
+      variables:
+        program: int
+      then:
+        - lambda: |-
+            id(irr).api_run_program(program);
+    - action: stop_all
+      then:
+        - lambda: |-
+            id(irr).stop_all();
+    - action: rain_delay
+      variables:
+        hours: int
+      then:
+        - lambda: |-
+            id(irr).api_rain_delay(hours);
+    - action: set_weather_adjust
+      variables:
+        pct: int
+        skip: bool
+        reason: string
+        valid_hours: int
+      then:
+        - lambda: |-
+            id(irr).api_set_weather_adjust(pct, skip, reason, valid_hours);
+    - action: set_program
+      variables:
+        program: int
+        name: string
+        enabled: bool
+        mode: int
+        weekday_mask: int
+        interval_days: int
+        days_until_first: int
+        starts: int[]
+        zone_minutes: int[]
+        seasonal_pct: int
+        cycle_soak: bool
+        weather_adjust: bool
+      then:
+        - lambda: |-
+            id(irr).api_set_program(program, name, enabled, mode, weekday_mask, interval_days, days_until_first, starts, zone_minutes, seasonal_pct, cycle_soak, weather_adjust);
+        - script.execute: pe_load
+    - action: set_zone
+      variables:
+        zone: int
+        name: string
+        enabled: bool
+        head: int
+        precip: float
+        soil: int
+        slope: int
+        sun: int
+        plant: int
+        area: float
+        max_cycle_min: int
+        soak_min: int
+        baseline: float
+        high_pct: int
+        low_pct: int
+        action: int
+        output: string
+      then:
+        - lambda: |-
+            id(irr).api_set_zone(zone, name, enabled, head, precip, soil, slope, sun, plant, area, max_cycle_min, soak_min, baseline, high_pct, low_pct, action, output);
+        - script.execute: ze_load
+    - action: set_settings
+      variables:
+        zone_count: int
+        controller_enabled: bool
+        monthly_pct: int[]
+        pulses_per_litre: float
+        leak_lpm: float
+        settle_s: int
+        rain_type: int
+        mm_per_tip: float
+        rain_skip_mm: float
+        rain_stops: bool
+        hard_cap_min: int
+        start_short_fn: int
+        start_long_fn: int
+        stop_short_fn: int
+        stop_long_fn: int
+        button_program: int
+        master_output: string
+        relay_active_high: bool
+      then:
+        - lambda: |-
+            id(irr).api_set_settings(zone_count, controller_enabled, monthly_pct, pulses_per_litre, leak_lpm, settle_s, rain_type, mm_per_tip, rain_skip_mm, rain_stops, hard_cap_min, start_short_fn, start_long_fn, stop_short_fn, stop_long_fn, button_program, master_output, relay_active_high);
+        - script.execute: settings_publish
+    - action: get_plan
+      supports_response: only
+      variables:
+        days: int
+      then:
+        - api.respond:
+            data: !lambda |-
+              ArduinoJson::JsonDocument doc;
+              const std::string text = id(irr).plan_json(days);
+              const bool ok = ArduinoJson::deserializeJson(doc, text) == ArduinoJson::DeserializationError::Ok;
+              if (ok) root["plan"].set(doc.as<ArduinoJson::JsonVariantConst>());
+    - action: get_run_log
+      supports_response: only
+      variables:
+        since: int
+      then:
+        - api.respond:
+            data: !lambda |-
+              ArduinoJson::JsonDocument doc;
+              const std::string text = id(irr).runlog_json(since < 0 ? 0u : (uint32_t) since);
+              const bool ok = ArduinoJson::deserializeJson(doc, text) == ArduinoJson::DeserializationError::Ok;
+              if (ok) root["records"].set(doc.as<ArduinoJson::JsonVariantConst>());
+              root["last"] = id(irr).runlog_last_seq();
+    - action: get_config
+      supports_response: only
+      then:
+        - api.respond:
+            data: !lambda |-
+              ArduinoJson::JsonDocument doc;
+              const std::string text = id(irr).config_json();
+              const bool ok = ArduinoJson::deserializeJson(doc, text) == ArduinoJson::DeserializationError::Ok;
+              if (ok)
+                for (ArduinoJson::JsonPair kv : doc.as<ArduinoJson::JsonObject>()) root[kv.key()] = kv.value();

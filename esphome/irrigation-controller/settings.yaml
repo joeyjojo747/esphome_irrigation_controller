@@ -6,47 +6,54 @@ esphome:
   on_boot:
     - priority: -100
       then:
-        - lambda: |-
-            auto &s = id(irr).settings();
-            id(set_zone_count).publish_state((float) s.zone_count);
-            id(set_ppl).publish_state(s.pulses_per_litre);
-            id(set_leak).publish_state(s.leak_lpm);
-            id(set_settle).publish_state((float) s.flow_settle_s);
-            id(set_mm_tip).publish_state(s.mm_per_tip);
-            id(set_rain_skip).publish_state(s.rain_skip_mm);
-            id(set_zone_cap).publish_state((float) (s.zone_hard_cap_s / 60));
-            id(set_controller_enabled).publish_state(s.controller_enabled);
-            id(set_rain_stops).publish_state(s.rain_sensor_stops_running);
-            id(set_relay_level).publish_state(s.relay_active_high ? "Active high" : "Active low");
-            {
-              static const char *const rt[] = {"None", "Switch NC", "Switch NO", "Tipping bucket"};
-              uint8_t i = (uint8_t) s.rain_type;
-              id(set_rain_type).publish_state(rt[i < 4 ? i : 0]);
-            }
-            {
-              static const char *const fn[] = {"None", "Run Program", "Stop All", "Next Zone", "Rain Delay 24h"};
-              auto f = [](irrigation::ButtonFn v) { uint8_t i = (uint8_t) v; return i < 5 ? i : 0; };
-              id(set_start_short).publish_state(fn[f(s.start_short_fn)]);
-              id(set_start_long).publish_state(fn[f(s.start_long_fn)]);
-              id(set_stop_short).publish_state(fn[f(s.stop_short_fn)]);
-              id(set_stop_long).publish_state(fn[f(s.stop_long_fn)]);
-            }
-            {
-              static const char *const pr[] = {"A", "B", "C", "D", "E", "F", "G", "H"};
-              id(set_button_program).publish_state(pr[s.button_program < 8 ? s.button_program : 0]);
-            }
-            id(set_month_jan).publish_state((float) s.monthly_pct[0]);
-            id(set_month_feb).publish_state((float) s.monthly_pct[1]);
-            id(set_month_mar).publish_state((float) s.monthly_pct[2]);
-            id(set_month_apr).publish_state((float) s.monthly_pct[3]);
-            id(set_month_may).publish_state((float) s.monthly_pct[4]);
-            id(set_month_jun).publish_state((float) s.monthly_pct[5]);
-            id(set_month_jul).publish_state((float) s.monthly_pct[6]);
-            id(set_month_aug).publish_state((float) s.monthly_pct[7]);
-            id(set_month_sep).publish_state((float) s.monthly_pct[8]);
-            id(set_month_oct).publish_state((float) s.monthly_pct[9]);
-            id(set_month_nov).publish_state((float) s.monthly_pct[10]);
-            id(set_month_dec).publish_state((float) s.monthly_pct[11]);
+        - script.execute: settings_publish
+
+# Also run after the set_settings API action so the entities show the new values.
+script:
+  - id: settings_publish
+    mode: restart
+    then:
+      - lambda: |-
+          auto &s = id(irr).settings();
+          id(set_zone_count).publish_state((float) s.zone_count);
+          id(set_ppl).publish_state(s.pulses_per_litre);
+          id(set_leak).publish_state(s.leak_lpm);
+          id(set_settle).publish_state((float) s.flow_settle_s);
+          id(set_mm_tip).publish_state(s.mm_per_tip);
+          id(set_rain_skip).publish_state(s.rain_skip_mm);
+          id(set_zone_cap).publish_state((float) (s.zone_hard_cap_s / 60));
+          id(set_controller_enabled).publish_state(s.controller_enabled);
+          id(set_rain_stops).publish_state(s.rain_sensor_stops_running);
+          id(set_relay_level).publish_state(s.relay_active_high ? "Active high" : "Active low");
+          {
+            static const char *const rt[] = {"None", "Switch NC", "Switch NO", "Tipping bucket"};
+            uint8_t i = (uint8_t) s.rain_type;
+            id(set_rain_type).publish_state(rt[i < 4 ? i : 0]);
+          }
+          {
+            static const char *const fn[] = {"None", "Run Program", "Stop All", "Next Zone", "Rain Delay 24h"};
+            auto f = [](irrigation::ButtonFn v) { uint8_t i = (uint8_t) v; return i < 5 ? i : 0; };
+            id(set_start_short).publish_state(fn[f(s.start_short_fn)]);
+            id(set_start_long).publish_state(fn[f(s.start_long_fn)]);
+            id(set_stop_short).publish_state(fn[f(s.stop_short_fn)]);
+            id(set_stop_long).publish_state(fn[f(s.stop_long_fn)]);
+          }
+          {
+            static const char *const pr[] = {"A", "B", "C", "D", "E", "F", "G", "H"};
+            id(set_button_program).publish_state(pr[s.button_program < 8 ? s.button_program : 0]);
+          }
+          id(set_month_jan).publish_state((float) s.monthly_pct[0]);
+          id(set_month_feb).publish_state((float) s.monthly_pct[1]);
+          id(set_month_mar).publish_state((float) s.monthly_pct[2]);
+          id(set_month_apr).publish_state((float) s.monthly_pct[3]);
+          id(set_month_may).publish_state((float) s.monthly_pct[4]);
+          id(set_month_jun).publish_state((float) s.monthly_pct[5]);
+          id(set_month_jul).publish_state((float) s.monthly_pct[6]);
+          id(set_month_aug).publish_state((float) s.monthly_pct[7]);
+          id(set_month_sep).publish_state((float) s.monthly_pct[8]);
+          id(set_month_oct).publish_state((float) s.monthly_pct[9]);
+          id(set_month_nov).publish_state((float) s.monthly_pct[10]);
+          id(set_month_dec).publish_state((float) s.monthly_pct[11]);
 
 number:
   - platform: template

@@ -12,7 +12,7 @@ packages:
   # expander: !include expander.yaml      # fit an MCP23017 for more than 6 zones
   # status_led: !include status_led.yaml  # fit an LED on led_pin
   # rtc: !include rtc.yaml                # fit a DS3231 RTC on the I2C bus
-  # Added by the editor/API tasks:
-  # editor_program: !include editor_program.yaml
-  # editor_zone: !include editor_zone.yaml
-  # api_actions: !include api_actions.yaml
+  # Editors and Home Assistant actions:
+  editor_program: !include editor_program.yaml
+  editor_zone: !include editor_zone.yaml
+  api_actions: !include api_actions.yaml

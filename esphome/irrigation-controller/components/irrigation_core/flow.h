@@ -18,7 +18,7 @@ struct FlowSettings {
 class FlowMonitor {
  public:
   void configure(const FlowSettings& s) { s_ = s; }
-  void zone_started(uint8_t zone, float baseline_lpm, uint8_t high_pct, uint8_t low_pct, uint32_t now_s);
+  void zone_started(uint8_t zone, float baseline_lpm, uint16_t high_pct, uint8_t low_pct, uint32_t now_s);
   // Returns the new baseline if learnable (EMA 0.7*old + 0.3*avg), else nullopt.
   std::optional<float> zone_stopped(uint32_t now_s);
   FlowEvent update(float flow_lpm, uint32_t now_s);  // call every second
@@ -28,7 +28,8 @@ class FlowMonitor {
   bool active_ = false;
   uint8_t zone_ = 0;
   float baseline_ = 0.0f;
-  uint8_t high_pct_ = 130, low_pct_ = 70;
+  uint16_t high_pct_ = 130;
+  uint8_t low_pct_ = 70;
   uint32_t start_s_ = 0;
   double sum_ = 0.0;
   uint32_t count_ = 0;

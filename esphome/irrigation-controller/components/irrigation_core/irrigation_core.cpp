@@ -603,21 +603,41 @@ PinError IrrigationCore::assign_zone_output(uint8_t zone, int16_t code) {
 
 PinError IrrigationCore::assign_master_output(int16_t code) { return this->assign_output_(kMasterSlot, code); }
 
+std::string IrrigationCore::output_error_text_(uint8_t slot, int16_t code, PinError e) const {
+  std::string msg = this->slot_name_(slot) + ": ";
+  msg += e == PinError::INVALID ? "code " + std::to_string(code) : irrigation::output_label(code);
+  msg += " ";
+  msg += irrigation::pin_error_text(e);
+  if (e == PinError::DUPLICATE) {
+    for (uint8_t i = 0; i <= kMasterSlot; i++)
+      if (i != slot && this->applied_[i] == code) {
+        msg += " " + this->slot_name_(i);
+        break;
+      }
+  }
+  return msg;
+}
+
+bool IrrigationCore::parse_output_(const std::string &label, int16_t &code) const {
+  for (const auto &o : this->options_)
+    if (o == label) {
+      code = irrigation::parse_output_label(label);
+      return true;
+    }
+  return false;
+}
+
+bool IrrigationCore::reject_(const std::string &msg) {
+  this->last_error_ = msg;
+  ESP_LOGW(TAG, "%s", msg.c_str());
+  return false;
+}
+
 PinError IrrigationCore::assign_output_(uint8_t slot, int16_t code) {
   if (slot > kMasterSlot) return PinError::INVALID;
   const PinError e = irrigation::validate_assignment(slot, code, this->applied_, this->board_);
   if (e != PinError::OK) {
-    std::string msg = this->slot_name_(slot) + ": ";
-    msg += e == PinError::INVALID ? "code " + std::to_string(code) : irrigation::output_label(code);
-    msg += " ";
-    msg += irrigation::pin_error_text(e);
-    if (e == PinError::DUPLICATE) {
-      for (uint8_t i = 0; i <= kMasterSlot; i++)
-        if (i != slot && this->applied_[i] == code) {
-          msg += " " + this->slot_name_(i);
-          break;
-        }
-    }
+    const std::string msg = this->output_error_text_(slot, code, e);
     this->last_error_ = msg;
     ESP_LOGW(TAG, "%s", msg.c_str());
     this->notify_output_changed_(slot);  // selects snap back to the current label
@@ -1025,6 +1045,200 @@ int32_t IrrigationCore::next_run_ts() const {
   return static_cast<int32_t>(static_cast<int64_t>(ts) - c.second + (best - now_idx) * 60);
 }
 
+// ---------------------------------------------------------------- API actions
+
+namespace {
+
+int clamp_int(const char *what, int v, int lo, int hi) {
+  const int r = v < lo ? lo : (v > hi ? hi : v);
+  if (r != v) ESP_LOGW(TAG, "%s %d out of range %d..%d, using %d", what, v, lo, hi, r);
+  return r;
+}
+
+float clamp_float(const char *what, float v, float lo, float hi) {
+  float r = v;
+  if (!std::isfinite(r) || r < lo) r = lo;
+  if (r > hi) r = hi;
+  if (!(r == v)) ESP_LOGW(TAG, "%s %.2f out of range %.2f..%.2f, using %.2f", what, v, lo, hi, r);
+  return r;
+}
+
+}  // namespace
+
+void IrrigationCore::set_program_name(uint8_t p, const std::string &name) {
+#ifdef USE_IRRIGATION_NAME_TEXTS
+  if (p >= kPrograms || this->program_name_texts_[p] == nullptr) return;
+  this->program_name_texts_[p]->make_call().set_value(name.substr(0, 24)).perform();
+#else
+  (void) p;
+  (void) name;
+#endif
+}
+
+void IrrigationCore::set_zone_name(uint8_t z, const std::string &name) {
+#ifdef USE_IRRIGATION_NAME_TEXTS
+  if (z >= kZones || this->zone_name_texts_[z] == nullptr) return;
+  this->zone_name_texts_[z]->make_call().set_value(name.substr(0, 24)).perform();
+#else
+  (void) z;
+  (void) name;
+#endif
+}
+
+void IrrigationCore::api_run_zone(int zone, int minutes) {
+  if (zone < 1 || zone > kZones) {
+    this->reject_("run_zone: zone " + std::to_string(zone) + " out of range 1..16");
+    return;
+  }
+  minutes = clamp_int("run_zone minutes", minutes, 0, 240);
+  this->run_zone(static_cast<uint8_t>(zone - 1), static_cast<uint32_t>(minutes) * 60u);
+}
+
+void IrrigationCore::api_run_program(int program) {
+  if (program < 0 || program >= kPrograms) {
+    this->reject_("run_program: program " + std::to_string(program) + " out of range 0..7");
+    return;
+  }
+  this->run_program(static_cast<uint8_t>(program));
+}
+
+void IrrigationCore::api_rain_delay(int hours) {
+  hours = clamp_int("rain_delay hours", hours, 0, 720);
+  this->set_rain_delay_hours(static_cast<uint16_t>(hours));
+}
+
+void IrrigationCore::api_set_weather_adjust(int pct, bool skip, const std::string &reason, int valid_hours) {
+  pct = clamp_int("weather pct", pct, 0, 250);
+  valid_hours = clamp_int("weather valid_hours", valid_hours, 0, 720);
+  this->set_weather_adjust(static_cast<uint16_t>(pct), skip, reason, static_cast<uint16_t>(valid_hours));
+}
+
+bool IrrigationCore::api_set_program(int program, const std::string &name, bool enabled, int mode, int weekday_mask,
+                                     int interval_days, int days_until_first, const std::vector<int32_t> &starts,
+                                     const std::vector<int32_t> &zone_minutes, int seasonal_pct, bool cycle_soak,
+                                     bool weather_adjust) {
+  if (program < 0 || program >= kPrograms)
+    return this->reject_("set_program: program " + std::to_string(program) + " out of range 0..7");
+  if (starts.size() > static_cast<size_t>(kStarts))
+    ESP_LOGW(TAG, "set_program: %u start times given, using the first %d", (unsigned) starts.size(), kStarts);
+  if (zone_minutes.size() > static_cast<size_t>(kZones))
+    ESP_LOGW(TAG, "set_program: %u zone times given, using the first %d", (unsigned) zone_minutes.size(), kZones);
+  const uint8_t pi = static_cast<uint8_t>(program);
+  irrigation::Program &p = this->program(pi);
+  p.enabled = enabled;
+  p.mode = static_cast<irrigation::DayMode>(clamp_int("program mode", mode, 0, 3));
+  p.weekday_mask = static_cast<uint8_t>(clamp_int("weekday_mask", weekday_mask, 0, 127));
+  p.interval_days = static_cast<uint8_t>(clamp_int("interval_days", interval_days, 1, 30));
+  for (int s = 0; s < kStarts; s++) {
+    int v = s < (int) starts.size() ? starts[s] : -1;
+    if (v < 0)
+      v = -1;
+    else
+      v = clamp_int("start minute", v, 0, 1439);
+    p.start_minutes[s] = static_cast<int16_t>(v);
+  }
+  for (int z = 0; z < kZones; z++) {
+    const int m = z < (int) zone_minutes.size() ? clamp_int("zone minutes", zone_minutes[z], 0, 240) : 0;
+    p.zone_seconds[z] = static_cast<uint16_t>(m * 60);
+  }
+  p.seasonal_pct = static_cast<uint8_t>(clamp_int("seasonal_pct", seasonal_pct, 0, 200));
+  p.cycle_soak = cycle_soak;
+  p.weather_adjust = weather_adjust;
+  days_until_first = clamp_int("days_until_first", days_until_first, 0, 29);
+  if (p.mode == irrigation::DayMode::INTERVAL)
+    this->set_program_interval_offset(pi, static_cast<uint8_t>(days_until_first));
+  this->set_program_name(pi, name);
+  this->save_program(pi);
+  return true;
+}
+
+bool IrrigationCore::api_set_zone(int zone, const std::string &name, bool enabled, int head, float precip, int soil,
+                                  int slope, int sun, int plant, float area, int max_cycle_min, int soak_min,
+                                  float baseline, int high_pct, int low_pct, int action, const std::string &output) {
+  if (zone < 1 || zone > kZones)
+    return this->reject_("set_zone: zone " + std::to_string(zone) + " out of range 1..16");
+  const uint8_t zi = static_cast<uint8_t>(zone - 1);
+  // Validate the output first so a bad label changes nothing.
+  int16_t code = this->applied_[zi];
+  if (!output.empty()) {
+    if (!this->parse_output_(output, code))
+      return this->reject_(this->slot_name_(zi) + ": unknown output '" + output + "'");
+    if (code != this->applied_[zi]) {
+      const PinError e = irrigation::validate_assignment(zi, code, this->applied_, this->board_);
+      if (e != PinError::OK) return this->reject_(this->output_error_text_(zi, code, e));
+    }
+  }
+  irrigation::Zone &z = this->zone(zi);
+  z.enabled = enabled;
+  z.head = static_cast<irrigation::HeadType>(clamp_int("head", head, 0, 4));
+  z.precip_mm_h = clamp_float("precip", precip, 1.0f, 100.0f);
+  z.soil = static_cast<irrigation::Soil>(clamp_int("soil", soil, 0, 5));
+  z.slope_pct = static_cast<uint8_t>(clamp_int("slope", slope, 0, 50));
+  z.sun = static_cast<irrigation::Sun>(clamp_int("sun", sun, 0, 2));
+  z.plant = static_cast<irrigation::Plant>(clamp_int("plant", plant, 0, 5));
+  z.area_m2 = clamp_float("area", area, 0.0f, 5000.0f);
+  z.max_cycle_s = static_cast<uint16_t>(clamp_int("max_cycle_min", max_cycle_min, 0, 60) * 60);
+  z.soak_s = static_cast<uint16_t>(clamp_int("soak_min", soak_min, 0, 120) * 60);
+  z.flow_baseline_lpm = clamp_float("baseline", baseline, 0.0f, 200.0f);
+  z.flow_high_pct = static_cast<uint16_t>(clamp_int("high_pct", high_pct, 100, 300));
+  z.flow_low_pct = static_cast<uint8_t>(clamp_int("low_pct", low_pct, 0, 100));
+  z.flow_action = static_cast<irrigation::FlowAction>(clamp_int("action", action, 0, 1));
+  z.output = code;  // save_zone routes a changed output through validation + hardware
+  this->set_zone_name(zi, name);
+  this->save_zone(zi);
+  return true;
+}
+
+bool IrrigationCore::api_set_settings(int zone_count, bool controller_enabled, const std::vector<int32_t> &monthly_pct,
+                                      float pulses_per_litre, float leak_lpm, int settle_s, int rain_type,
+                                      float mm_per_tip, float rain_skip_mm, bool rain_stops, int hard_cap_min,
+                                      int start_short_fn, int start_long_fn, int stop_short_fn, int stop_long_fn,
+                                      int button_program, const std::string &master_output,
+                                      bool relay_active_high) {
+  if (monthly_pct.size() != 12)
+    return this->reject_("set_settings: monthly_pct needs 12 values, got " + std::to_string(monthly_pct.size()));
+  int16_t mcode = this->applied_[kMasterSlot];
+  if (!master_output.empty()) {
+    if (!this->parse_output_(master_output, mcode))
+      return this->reject_("Master: unknown output '" + master_output + "'");
+    if (mcode != this->applied_[kMasterSlot]) {
+      const PinError e = irrigation::validate_assignment(kMasterSlot, mcode, this->applied_, this->board_);
+      if (e != PinError::OK) return this->reject_(this->output_error_text_(kMasterSlot, mcode, e));
+    }
+  }
+  auto &s = this->settings_;
+  s.zone_count = static_cast<uint8_t>(clamp_int("zone_count", zone_count, 1, kZones));
+  s.controller_enabled = controller_enabled;
+  for (int m = 0; m < 12; m++)
+    s.monthly_pct[m] = static_cast<uint8_t>(clamp_int("monthly_pct", monthly_pct[m], 0, 200));
+  s.pulses_per_litre = clamp_float("pulses_per_litre", pulses_per_litre, 1.0f, 5000.0f);
+  s.leak_lpm = clamp_float("leak_lpm", leak_lpm, 0.1f, 20.0f);
+  s.flow_settle_s = static_cast<uint16_t>(clamp_int("settle_s", settle_s, 10, 300));
+  s.rain_type = static_cast<irrigation::RainType>(clamp_int("rain_type", rain_type, 0, 3));
+  s.mm_per_tip = clamp_float("mm_per_tip", mm_per_tip, 0.1f, 1.0f);
+  s.rain_skip_mm = clamp_float("rain_skip_mm", rain_skip_mm, 0.0f, 50.0f);
+  s.rain_sensor_stops_running = rain_stops;
+  s.zone_hard_cap_s = static_cast<uint32_t>(clamp_int("hard_cap_min", hard_cap_min, 5, 240)) * 60u;
+  s.start_short_fn = static_cast<irrigation::ButtonFn>(clamp_int("start_short_fn", start_short_fn, 0, 4));
+  s.start_long_fn = static_cast<irrigation::ButtonFn>(clamp_int("start_long_fn", start_long_fn, 0, 4));
+  s.stop_short_fn = static_cast<irrigation::ButtonFn>(clamp_int("stop_short_fn", stop_short_fn, 0, 4));
+  s.stop_long_fn = static_cast<irrigation::ButtonFn>(clamp_int("stop_long_fn", stop_long_fn, 0, 4));
+  s.button_program = static_cast<uint8_t>(clamp_int("button_program", button_program, 0, kPrograms - 1));
+  s.master_output = mcode;  // save_settings applies output / relay level changes
+  s.relay_active_high = relay_active_high;
+  this->save_settings();
+  return true;
+}
+
+int IrrigationCore::program_days_until_first(uint8_t i) const {
+  if (i >= kPrograms) return 0;
+  const Clock c = this->clock_now_();
+  if (!c.valid) return 0;
+  const irrigation::Program &p = this->programs_.p[i];
+  const int32_t n = p.interval_days == 0 ? 1 : p.interval_days;
+  return static_cast<int>(((p.interval_anchor_day - c.day) % n + n) % n);
+}
+
 // ---------------------------------------------------------------- JSON
 
 std::string IrrigationCore::plan_json(int days) {
@@ -1044,18 +1258,13 @@ std::string IrrigationCore::runlog_json(uint32_t since_seq) {
 }
 
 std::string IrrigationCore::config_json() {
-  const Clock c = this->clock_now_();
   std::string j;
   j.reserve(6144);
   j += "{\"programs\":[";
   for (int i = 0; i < kPrograms; i++) {
     const irrigation::Program &p = this->programs_.p[i];
     if (i) j += ',';
-    int dtf = 0;
-    if (c.valid) {
-      const int32_t n = p.interval_days == 0 ? 1 : p.interval_days;
-      dtf = static_cast<int>(((p.interval_anchor_day - c.day) % n + n) % n);
-    }
+    const int dtf = this->program_days_until_first(static_cast<uint8_t>(i));
     j += "{\"program\":" + std::to_string(i) + ",\"name\":";
     json_escape_append(j, this->program_name_(i));
     j += ",\"enabled\":";

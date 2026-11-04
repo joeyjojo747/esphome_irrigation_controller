@@ -1,0 +1,615 @@
+# Program editor. The buffer lives in RAM (a globals irrigation::Program); the entities
+# edit it, Save copies it into the selected program and persists it, Revert reloads it.
+# Selecting a program, pressing Revert and the set_program action all reload the
+# entities from the core with publish_state (which does not trigger set actions).
+irrigation_core:
+  program_name_texts: [prog_name_1, prog_name_2, prog_name_3, prog_name_4, prog_name_5, prog_name_6, prog_name_7, prog_name_8]
+
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - script.execute: pe_load
+
+globals:
+  - id: pe_idx
+    type: int
+    initial_value: '0'
+  - id: pe_buf
+    type: irrigation::Program
+  - id: pe_dtf
+    type: int
+    initial_value: '0'
+  - id: pe_shadow_1
+    type: int
+    initial_value: '480'
+  - id: pe_shadow_2
+    type: int
+    initial_value: '480'
+  - id: pe_shadow_3
+    type: int
+    initial_value: '480'
+  - id: pe_shadow_4
+    type: int
+    initial_value: '480'
+
+text:
+  - platform: template
+    id: prog_name_1
+    name: "Program 1 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: prog_name_2
+    name: "Program 2 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: prog_name_3
+    name: "Program 3 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: prog_name_4
+    name: "Program 4 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: prog_name_5
+    name: "Program 5 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: prog_name_6
+    name: "Program 6 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: prog_name_7
+    name: "Program 7 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: prog_name_8
+    name: "Program 8 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+
+script:
+  - id: pe_load
+    mode: restart
+    then:
+      - lambda: |-
+          const uint8_t i = (uint8_t) id(pe_idx);
+          id(pe_buf) = id(irr).program(i);
+          const auto &b = id(pe_buf);
+          static const char *const modes[] = {"Weekdays", "Odd days", "Even days", "Every N days"};
+          id(pe_enabled).publish_state(b.enabled);
+          id(pe_mode).publish_state(modes[(uint8_t) b.mode < 4 ? (uint8_t) b.mode : 0]);
+          id(pe_wd_0).publish_state(((b.weekday_mask >> 0) & 1) != 0);
+          id(pe_wd_1).publish_state(((b.weekday_mask >> 1) & 1) != 0);
+          id(pe_wd_2).publish_state(((b.weekday_mask >> 2) & 1) != 0);
+          id(pe_wd_3).publish_state(((b.weekday_mask >> 3) & 1) != 0);
+          id(pe_wd_4).publish_state(((b.weekday_mask >> 4) & 1) != 0);
+          id(pe_wd_5).publish_state(((b.weekday_mask >> 5) & 1) != 0);
+          id(pe_wd_6).publish_state(((b.weekday_mask >> 6) & 1) != 0);
+          id(pe_interval).publish_state((float) b.interval_days);
+          id(pe_dtf) = id(irr).program_days_until_first(i);
+          id(pe_dtf_num).publish_state((float) id(pe_dtf));
+          if (b.start_minutes[0] >= 0) id(pe_shadow_1) = b.start_minutes[0];
+          id(pe_start_1).make_call().set_time(id(pe_shadow_1) / 60, id(pe_shadow_1) % 60, 0).perform();
+          id(pe_start_1_on).publish_state(b.start_minutes[0] >= 0);
+          if (b.start_minutes[1] >= 0) id(pe_shadow_2) = b.start_minutes[1];
+          id(pe_start_2).make_call().set_time(id(pe_shadow_2) / 60, id(pe_shadow_2) % 60, 0).perform();
+          id(pe_start_2_on).publish_state(b.start_minutes[1] >= 0);
+          if (b.start_minutes[2] >= 0) id(pe_shadow_3) = b.start_minutes[2];
+          id(pe_start_3).make_call().set_time(id(pe_shadow_3) / 60, id(pe_shadow_3) % 60, 0).perform();
+          id(pe_start_3_on).publish_state(b.start_minutes[2] >= 0);
+          if (b.start_minutes[3] >= 0) id(pe_shadow_4) = b.start_minutes[3];
+          id(pe_start_4).make_call().set_time(id(pe_shadow_4) / 60, id(pe_shadow_4) % 60, 0).perform();
+          id(pe_start_4_on).publish_state(b.start_minutes[3] >= 0);
+          id(pe_zone_1).publish_state((float) ((b.zone_seconds[0] + 30) / 60));
+          id(pe_zone_2).publish_state((float) ((b.zone_seconds[1] + 30) / 60));
+          id(pe_zone_3).publish_state((float) ((b.zone_seconds[2] + 30) / 60));
+          id(pe_zone_4).publish_state((float) ((b.zone_seconds[3] + 30) / 60));
+          id(pe_zone_5).publish_state((float) ((b.zone_seconds[4] + 30) / 60));
+          id(pe_zone_6).publish_state((float) ((b.zone_seconds[5] + 30) / 60));
+          id(pe_zone_7).publish_state((float) ((b.zone_seconds[6] + 30) / 60));
+          id(pe_zone_8).publish_state((float) ((b.zone_seconds[7] + 30) / 60));
+          id(pe_zone_9).publish_state((float) ((b.zone_seconds[8] + 30) / 60));
+          id(pe_zone_10).publish_state((float) ((b.zone_seconds[9] + 30) / 60));
+          id(pe_zone_11).publish_state((float) ((b.zone_seconds[10] + 30) / 60));
+          id(pe_zone_12).publish_state((float) ((b.zone_seconds[11] + 30) / 60));
+          id(pe_zone_13).publish_state((float) ((b.zone_seconds[12] + 30) / 60));
+          id(pe_zone_14).publish_state((float) ((b.zone_seconds[13] + 30) / 60));
+          id(pe_zone_15).publish_state((float) ((b.zone_seconds[14] + 30) / 60));
+          id(pe_zone_16).publish_state((float) ((b.zone_seconds[15] + 30) / 60));
+          id(pe_seasonal).publish_state((float) b.seasonal_pct);
+          id(pe_cycle_soak).publish_state(b.cycle_soak);
+          id(pe_weather).publish_state(b.weather_adjust);
+
+select:
+  - platform: template
+    id: pe_program
+    name: "Program Editor Program"
+    entity_category: config
+    optimistic: true
+    options: [A, B, C, D, E, F, G, H]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"A", "B", "C", "D", "E", "F", "G", "H"};
+          for (int i = 0; i < 8; i++)
+            if (x == o[i]) id(pe_idx) = i;
+      - script.execute: pe_load
+  - platform: template
+    id: pe_mode
+    name: "Program Editor Day Mode"
+    entity_category: config
+    optimistic: true
+    options: [Weekdays, Odd days, Even days, Every N days]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"Weekdays", "Odd days", "Even days", "Every N days"};
+          for (int i = 0; i < 4; i++)
+            if (x == o[i]) id(pe_buf).mode = (irrigation::DayMode) i;
+
+switch:
+  - platform: template
+    id: pe_enabled
+    name: "Program Editor Enabled"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).enabled = true;'
+    turn_off_action:
+      - lambda: 'id(pe_buf).enabled = false;'
+  - platform: template
+    id: pe_wd_0
+    name: "Program Editor Mon"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weekday_mask |= (1 << 0);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weekday_mask &= ~(1 << 0);'
+  - platform: template
+    id: pe_wd_1
+    name: "Program Editor Tue"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weekday_mask |= (1 << 1);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weekday_mask &= ~(1 << 1);'
+  - platform: template
+    id: pe_wd_2
+    name: "Program Editor Wed"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weekday_mask |= (1 << 2);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weekday_mask &= ~(1 << 2);'
+  - platform: template
+    id: pe_wd_3
+    name: "Program Editor Thu"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weekday_mask |= (1 << 3);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weekday_mask &= ~(1 << 3);'
+  - platform: template
+    id: pe_wd_4
+    name: "Program Editor Fri"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weekday_mask |= (1 << 4);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weekday_mask &= ~(1 << 4);'
+  - platform: template
+    id: pe_wd_5
+    name: "Program Editor Sat"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weekday_mask |= (1 << 5);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weekday_mask &= ~(1 << 5);'
+  - platform: template
+    id: pe_wd_6
+    name: "Program Editor Sun"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weekday_mask |= (1 << 6);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weekday_mask &= ~(1 << 6);'
+  - platform: template
+    id: pe_start_1_on
+    name: "Program Editor Start 1 Active"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).start_minutes[0] = (int16_t) id(pe_shadow_1);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).start_minutes[0] = -1;'
+  - platform: template
+    id: pe_start_2_on
+    name: "Program Editor Start 2 Active"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).start_minutes[1] = (int16_t) id(pe_shadow_2);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).start_minutes[1] = -1;'
+  - platform: template
+    id: pe_start_3_on
+    name: "Program Editor Start 3 Active"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).start_minutes[2] = (int16_t) id(pe_shadow_3);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).start_minutes[2] = -1;'
+  - platform: template
+    id: pe_start_4_on
+    name: "Program Editor Start 4 Active"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).start_minutes[3] = (int16_t) id(pe_shadow_4);'
+    turn_off_action:
+      - lambda: 'id(pe_buf).start_minutes[3] = -1;'
+  - platform: template
+    id: pe_cycle_soak
+    name: "Program Editor Cycle Soak"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).cycle_soak = true;'
+    turn_off_action:
+      - lambda: 'id(pe_buf).cycle_soak = false;'
+  - platform: template
+    id: pe_weather
+    name: "Program Editor Weather Adjust"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(pe_buf).weather_adjust = true;'
+    turn_off_action:
+      - lambda: 'id(pe_buf).weather_adjust = false;'
+
+number:
+  - platform: template
+    id: pe_interval
+    name: "Program Editor Interval Days"
+    entity_category: config
+    optimistic: true
+    min_value: 1
+    max_value: 30
+    step: 1
+    mode: box
+    set_action:
+      - lambda: 'id(pe_buf).interval_days = (uint8_t) x;'
+  - platform: template
+    id: pe_dtf_num
+    name: "Program Editor Days Until First Run"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 29
+    step: 1
+    mode: box
+    set_action:
+      - lambda: 'id(pe_dtf) = (int) x;'
+  - platform: template
+    id: pe_seasonal
+    name: "Program Editor Seasonal Adjust"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: 'id(pe_buf).seasonal_pct = (uint8_t) x;'
+  - platform: template
+    id: pe_zone_1
+    name: "Program Editor Zone 1 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[0] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_2
+    name: "Program Editor Zone 2 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[1] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_3
+    name: "Program Editor Zone 3 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[2] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_4
+    name: "Program Editor Zone 4 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[3] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_5
+    name: "Program Editor Zone 5 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[4] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_6
+    name: "Program Editor Zone 6 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[5] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_7
+    name: "Program Editor Zone 7 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[6] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_8
+    name: "Program Editor Zone 8 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[7] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_9
+    name: "Program Editor Zone 9 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[8] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_10
+    name: "Program Editor Zone 10 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[9] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_11
+    name: "Program Editor Zone 11 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[10] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_12
+    name: "Program Editor Zone 12 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[11] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_13
+    name: "Program Editor Zone 13 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[12] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_14
+    name: "Program Editor Zone 14 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[13] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_15
+    name: "Program Editor Zone 15 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[14] = (uint16_t) (x * 60.0f);'
+  - platform: template
+    id: pe_zone_16
+    name: "Program Editor Zone 16 Minutes"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: 'id(pe_buf).zone_seconds[15] = (uint16_t) (x * 60.0f);'
+
+datetime:
+  - platform: template
+    id: pe_start_1
+    name: "Program Editor Start 1"
+    type: time
+    entity_category: config
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(pe_shadow_1) = x.hour * 60 + x.minute;
+          if (id(pe_buf).start_minutes[0] >= 0) id(pe_buf).start_minutes[0] = (int16_t) id(pe_shadow_1);
+  - platform: template
+    id: pe_start_2
+    name: "Program Editor Start 2"
+    type: time
+    entity_category: config
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(pe_shadow_2) = x.hour * 60 + x.minute;
+          if (id(pe_buf).start_minutes[1] >= 0) id(pe_buf).start_minutes[1] = (int16_t) id(pe_shadow_2);
+  - platform: template
+    id: pe_start_3
+    name: "Program Editor Start 3"
+    type: time
+    entity_category: config
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(pe_shadow_3) = x.hour * 60 + x.minute;
+          if (id(pe_buf).start_minutes[2] >= 0) id(pe_buf).start_minutes[2] = (int16_t) id(pe_shadow_3);
+  - platform: template
+    id: pe_start_4
+    name: "Program Editor Start 4"
+    type: time
+    entity_category: config
+    optimistic: true
+    set_action:
+      - lambda: |-
+          id(pe_shadow_4) = x.hour * 60 + x.minute;
+          if (id(pe_buf).start_minutes[3] >= 0) id(pe_buf).start_minutes[3] = (int16_t) id(pe_shadow_4);
+
+button:
+  - platform: template
+    id: pe_save
+    name: "Program Editor Save"
+    on_press:
+      - lambda: |-
+          const uint8_t i = (uint8_t) id(pe_idx);
+          id(irr).program(i) = id(pe_buf);
+          if (id(pe_buf).mode == irrigation::DayMode::INTERVAL)
+            id(irr).set_program_interval_offset(i, (uint8_t) id(pe_dtf));
+          id(irr).save_program(i);
+  - platform: template
+    id: pe_revert
+    name: "Program Editor Revert"
+    on_press:
+      - script.execute: pe_load

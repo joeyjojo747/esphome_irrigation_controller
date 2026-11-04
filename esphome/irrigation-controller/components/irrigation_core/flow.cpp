@@ -2,7 +2,7 @@
 
 namespace irrigation {
 
-void FlowMonitor::zone_started(uint8_t zone, float baseline_lpm, uint8_t high_pct, uint8_t low_pct, uint32_t now_s) {
+void FlowMonitor::zone_started(uint8_t zone, float baseline_lpm, uint16_t high_pct, uint8_t low_pct, uint32_t now_s) {
   active_ = true;
   zone_ = zone;
   baseline_ = baseline_lpm;

@@ -1,0 +1,434 @@
+# Zone editor. Same buffer pattern as the program editor. Zone Editor Output is the
+# irrigation_core select retargeted to the selected zone: it applies immediately
+# (validated, stops watering and re-drives the hardware), not on Save, and Save
+# keeps whatever output the zone has. Zone Editor Name writes the Zone N Name text
+# at once. A flow baseline is only written on Save if it was edited here, so a
+# baseline learned in the meantime is not overwritten.
+irrigation_core:
+  zone_name_texts: [zone_name_1, zone_name_2, zone_name_3, zone_name_4, zone_name_5, zone_name_6, zone_name_7, zone_name_8, zone_name_9, zone_name_10, zone_name_11, zone_name_12, zone_name_13, zone_name_14, zone_name_15, zone_name_16]
+
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - script.execute: ze_load
+
+globals:
+  - id: ze_idx
+    type: int
+    initial_value: '0'
+  - id: ze_buf
+    type: irrigation::Zone
+  - id: ze_baseline_dirty
+    type: bool
+    initial_value: 'false'
+
+text:
+  - platform: template
+    id: zone_name_1
+    name: "Zone 1 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_2
+    name: "Zone 2 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_3
+    name: "Zone 3 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_4
+    name: "Zone 4 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_5
+    name: "Zone 5 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_6
+    name: "Zone 6 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_7
+    name: "Zone 7 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_8
+    name: "Zone 8 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_9
+    name: "Zone 9 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_10
+    name: "Zone 10 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_11
+    name: "Zone 11 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_12
+    name: "Zone 12 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_13
+    name: "Zone 13 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_14
+    name: "Zone 14 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_15
+    name: "Zone 15 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: zone_name_16
+    name: "Zone 16 Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    restore_value: true
+  - platform: template
+    id: ze_name
+    name: "Zone Editor Name"
+    entity_category: config
+    optimistic: true
+    min_length: 0
+    max_length: 24
+    mode: text
+    set_action:
+      - lambda: 'id(irr).set_zone_name((uint8_t) id(ze_idx), x);'
+
+script:
+  - id: ze_load
+    mode: restart
+    then:
+      - lambda: |-
+          const uint8_t i = (uint8_t) id(ze_idx);
+          id(ze_buf) = id(irr).zone(i);
+          id(ze_baseline_dirty) = false;
+          const auto &z = id(ze_buf);
+          static const char *const heads[] = {"Spray", "Rotor", "Rotator", "Drip", "Bubbler"};
+          static const char *const soils[] = {"Sand", "Loamy Sand", "Sandy Loam", "Loam", "Clay Loam", "Clay"};
+          static const char *const suns[] = {"Full", "Part", "Shade"};
+          static const char *const plants[] = {"Lawn", "Shrubs", "Trees", "Garden Beds", "Natives", "Veg"};
+          static const char *const acts[] = {"Alert", "Alert and stop"};
+          id(ze_name).publish_state(id(irr).zone_name(i));
+          id(ze_enabled).publish_state(z.enabled);
+          id(ze_head).publish_state(heads[(uint8_t) z.head < 5 ? (uint8_t) z.head : 0]);
+          id(ze_soil).publish_state(soils[(uint8_t) z.soil < 6 ? (uint8_t) z.soil : 0]);
+          id(ze_sun).publish_state(suns[(uint8_t) z.sun < 3 ? (uint8_t) z.sun : 0]);
+          id(ze_plant).publish_state(plants[(uint8_t) z.plant < 6 ? (uint8_t) z.plant : 0]);
+          id(ze_action).publish_state(acts[(uint8_t) z.flow_action < 2 ? (uint8_t) z.flow_action : 0]);
+          id(ze_precip).publish_state(z.precip_mm_h);
+          id(ze_slope).publish_state((float) z.slope_pct);
+          id(ze_area).publish_state(z.area_m2);
+          id(ze_max_cycle).publish_state((float) ((z.max_cycle_s + 30) / 60));
+          id(ze_soak).publish_state((float) ((z.soak_s + 30) / 60));
+          id(ze_baseline).publish_state(z.flow_baseline_lpm);
+          id(ze_high).publish_state((float) z.flow_high_pct);
+          id(ze_low).publish_state((float) z.flow_low_pct);
+          id(ze_output).set_slot(i);
+
+select:
+  - platform: template
+    id: ze_zone
+    name: "Zone Editor Zone"
+    entity_category: config
+    optimistic: true
+    options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"]
+    set_action:
+      - lambda: |-
+          int n = atoi(x.c_str());
+          id(ze_idx) = (n >= 1 && n <= 16) ? n - 1 : 0;
+      - script.execute: ze_load
+  - platform: template
+    id: ze_head
+    name: "Zone Editor Head Type"
+    entity_category: config
+    optimistic: true
+    options: [Spray, Rotor, Rotator, Drip, Bubbler]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"Spray", "Rotor", "Rotator", "Drip", "Bubbler"};
+          for (int i = 0; i < 5; i++)
+            if (x == o[i]) id(ze_buf).head = (irrigation::HeadType) i;
+  - platform: template
+    id: ze_soil
+    name: "Zone Editor Soil"
+    entity_category: config
+    optimistic: true
+    options: [Sand, Loamy Sand, Sandy Loam, Loam, Clay Loam, Clay]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"Sand", "Loamy Sand", "Sandy Loam", "Loam", "Clay Loam", "Clay"};
+          for (int i = 0; i < 6; i++)
+            if (x == o[i]) id(ze_buf).soil = (irrigation::Soil) i;
+  - platform: template
+    id: ze_sun
+    name: "Zone Editor Sun"
+    entity_category: config
+    optimistic: true
+    options: [Full, Part, Shade]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"Full", "Part", "Shade"};
+          for (int i = 0; i < 3; i++)
+            if (x == o[i]) id(ze_buf).sun = (irrigation::Sun) i;
+  - platform: template
+    id: ze_plant
+    name: "Zone Editor Plant"
+    entity_category: config
+    optimistic: true
+    options: [Lawn, Shrubs, Trees, Garden Beds, Natives, Veg]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"Lawn", "Shrubs", "Trees", "Garden Beds", "Natives", "Veg"};
+          for (int i = 0; i < 6; i++)
+            if (x == o[i]) id(ze_buf).plant = (irrigation::Plant) i;
+  - platform: template
+    id: ze_action
+    name: "Zone Editor Flow Action"
+    entity_category: config
+    optimistic: true
+    options: [Alert, Alert and stop]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"Alert", "Alert and stop"};
+          for (int i = 0; i < 2; i++)
+            if (x == o[i]) id(ze_buf).flow_action = (irrigation::FlowAction) i;
+  - platform: irrigation_core
+    id: ze_output
+    name: "Zone Editor Output"
+    slot: 1
+
+switch:
+  - platform: template
+    id: ze_enabled
+    name: "Zone Editor Enabled"
+    entity_category: config
+    restore_mode: DISABLED
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(ze_buf).enabled = true;'
+    turn_off_action:
+      - lambda: 'id(ze_buf).enabled = false;'
+
+number:
+  - platform: template
+    id: ze_precip
+    name: "Zone Editor Precipitation"
+    entity_category: config
+    optimistic: true
+    min_value: 1
+    max_value: 100
+    step: 0.5
+    mode: box
+    unit_of_measurement: "mm/h"
+    set_action:
+      - lambda: |-
+          id(ze_buf).precip_mm_h = x;
+  - platform: template
+    id: ze_slope
+    name: "Zone Editor Slope"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 50
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(ze_buf).slope_pct = (uint8_t) x;
+  - platform: template
+    id: ze_area
+    name: "Zone Editor Area"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 5000
+    step: 1
+    mode: box
+    unit_of_measurement: "m²"
+    set_action:
+      - lambda: |-
+          id(ze_buf).area_m2 = x;
+  - platform: template
+    id: ze_max_cycle
+    name: "Zone Editor Max Cycle"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 60
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: |-
+          id(ze_buf).max_cycle_s = (uint16_t) (x * 60.0f);
+  - platform: template
+    id: ze_soak
+    name: "Zone Editor Soak"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 120
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: |-
+          id(ze_buf).soak_s = (uint16_t) (x * 60.0f);
+  - platform: template
+    id: ze_baseline
+    name: "Zone Editor Flow Baseline"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 0.1
+    mode: box
+    unit_of_measurement: "L/min"
+    set_action:
+      - lambda: |-
+          id(ze_buf).flow_baseline_lpm = x;
+          id(ze_baseline_dirty) = true;
+  - platform: template
+    id: ze_high
+    name: "Zone Editor High Flow"
+    entity_category: config
+    optimistic: true
+    min_value: 100
+    max_value: 300
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(ze_buf).flow_high_pct = (uint16_t) x;
+  - platform: template
+    id: ze_low
+    name: "Zone Editor Low Flow"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(ze_buf).flow_low_pct = (uint8_t) x;
+
+button:
+  - platform: template
+    id: ze_save
+    name: "Zone Editor Save"
+    on_press:
+      - lambda: |-
+          const uint8_t i = (uint8_t) id(ze_idx);
+          auto &z = id(irr).zone(i);
+          const int16_t out = z.output;  // outputs apply immediately, never from the buffer
+          const float learned = z.flow_baseline_lpm;
+          z = id(ze_buf);
+          z.output = out;
+          if (!id(ze_baseline_dirty)) z.flow_baseline_lpm = learned;
+          id(ze_baseline_dirty) = false;
+          id(irr).save_zone(i);
+  - platform: template
+    id: ze_revert
+    name: "Zone Editor Revert"
+    on_press:
+      - script.execute: ze_load
+  - platform: template
+    id: ze_learn
+    name: "Zone Editor Learn Flow"
+    on_press:
+      - lambda: 'id(irr).learn_flow((uint8_t) id(ze_idx));'
+      - script.execute: ze_load
+  - platform: template
+    id: ze_test
+    name: "Zone Editor Test Run"
+    on_press:
+      - lambda: 'id(irr).run_zone((uint8_t) id(ze_idx), 180);'

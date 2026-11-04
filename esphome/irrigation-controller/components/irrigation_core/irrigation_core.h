@@ -192,6 +192,36 @@ class IrrigationCore : public Component {
   void button_press(bool is_start, bool is_long);
   bool status_led_level() const;
 
+  // ---- API actions ----
+  // Arguments are range-clamped (WARN when changed). An invalid index, array length
+  // or output label rejects the whole call instead: WARN, Last Error set, nothing
+  // changed. Each successful set_* saves, which emits config_changed once.
+  void api_run_zone(int zone, int minutes);
+  void api_run_program(int program);
+  void api_rain_delay(int hours);
+  void api_set_weather_adjust(int pct, bool skip, const std::string &reason, int valid_hours);
+  bool api_set_program(int program, const std::string &name, bool enabled, int mode, int weekday_mask,
+                       int interval_days, int days_until_first, const std::vector<int32_t> &starts,
+                       const std::vector<int32_t> &zone_minutes, int seasonal_pct, bool cycle_soak,
+                       bool weather_adjust);
+  bool api_set_zone(int zone, const std::string &name, bool enabled, int head, float precip, int soil, int slope,
+                    int sun, int plant, float area, int max_cycle_min, int soak_min, float baseline, int high_pct,
+                    int low_pct, int action, const std::string &output);
+  bool api_set_settings(int zone_count, bool controller_enabled, const std::vector<int32_t> &monthly_pct,
+                        float pulses_per_litre, float leak_lpm, int settle_s, int rain_type, float mm_per_tip,
+                        float rain_skip_mm, bool rain_stops, int hard_cap_min, int start_short_fn,
+                        int start_long_fn, int stop_short_fn, int stop_long_fn, int button_program,
+                        const std::string &master_output, bool relay_active_high);
+  // Days until the interval anchor (0 when the clock is invalid).
+  int program_days_until_first(uint8_t p) const;
+  uint32_t runlog_last_seq() const { return this->runlog_.last_seq(); }
+
+  // ---- names (the Program N Name / Zone N Name text entities when configured) ----
+  std::string program_name(uint8_t p) const { return this->program_name_(p); }
+  std::string zone_name(uint8_t z) const { return this->zone_name_(z); }
+  void set_program_name(uint8_t p, const std::string &name);
+  void set_zone_name(uint8_t z, const std::string &name);
+
   // ---- JSON ----
   std::string plan_json(int days);
   std::string runlog_json(uint32_t since_seq);
@@ -253,6 +283,9 @@ class IrrigationCore : public Component {
   void emit_(const char *type, std::string json);
 
   PinError assign_output_(uint8_t slot, int16_t code);
+  std::string output_error_text_(uint8_t slot, int16_t code, PinError e) const;
+  bool parse_output_(const std::string &label, int16_t &code) const;
+  bool reject_(const std::string &msg);
   void hw_configure_off_(int16_t code);
   void hw_write_(int16_t code, bool level);
   void hw_park_(int16_t code);
