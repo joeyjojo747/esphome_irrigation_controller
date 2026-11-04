@@ -1,0 +1,8 @@
+esphome/secrets.yaml
+secrets.yaml
+.esphome/
+build/
+__pycache__/
+.pytest_cache/
+reference_docs/custom.yaml
+.superpowers/

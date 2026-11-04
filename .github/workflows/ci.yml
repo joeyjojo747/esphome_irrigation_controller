@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y g++ cmake
+      - run: tools/ci/host-tests.sh
+
+  ha-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # HA 2026.10 requires Python 3.14.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      # esphome and homeassistant pin conflicting deps (paho-mqtt), so they
+      # cannot share an environment: separate requirements files per job.
+      - run: pip install -r tools/requirements-ha.txt
+      - run: tools/ci/ha-tests.sh
+
+  esphome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r tools/requirements-esphome.txt
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .esphome
+          key: esphome-${{ hashFiles('tools/requirements-esphome.txt', 'tests/compile/*.yaml') }}
+          restore-keys: esphome-
+      - run: tools/ci/esphome.sh

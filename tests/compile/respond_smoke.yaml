@@ -1,0 +1,22 @@
+esphome:
+  name: respond-smoke
+
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  framework:
+    type: esp-idf
+
+logger:
+
+wifi:
+  ssid: "ci-dummy-ssid"
+  password: "ci-dummy-password"
+
+api:
+  actions:
+    - action: ping
+      supports_response: only
+      then:
+        - api.respond:
+            data: !lambda 'root["ok"] = true;'
