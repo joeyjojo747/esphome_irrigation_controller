@@ -1,0 +1,97 @@
+# Field inputs: flow meter, rain gauge/switch, and the local Start/Stop buttons.
+sensor:
+  - platform: pulse_counter
+    id: flow_pulses
+    name: "Flow Pulses"
+    internal: true
+    pin:
+      number: ${flow_pin}
+      mode:
+        input: true
+        pullup: true
+    internal_filter: 13us
+    update_interval: 1s
+    unit_of_measurement: "pulses/min"
+    total:
+      id: flow_pulse_total
+      name: "Flow Pulse Total"
+      internal: true
+  # pulse_counter reports pulses per minute, so dividing by pulses per litre is L/min.
+  - platform: template
+    id: flow_rate
+    name: "Flow Rate"
+    unit_of_measurement: "L/min"
+    accuracy_decimals: 2
+    device_class: volume_flow_rate
+    state_class: measurement
+    update_interval: 1s
+    lambda: |-
+      float ppm = id(flow_pulses).state;
+      if (std::isnan(ppm)) return 0.0f;
+      return ppm / id(irr).settings().pulses_per_litre;
+
+binary_sensor:
+  # One pin serves both rain types; the core ignores the one that is not selected.
+  - platform: gpio
+    id: rain_input
+    name: "Rain Input"
+    internal: true
+    pin:
+      number: ${rain_pin}
+      allow_other_uses: true
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+    on_state:
+      - lambda: 'id(irr).set_rain_switch(x);'
+    on_press:
+      - lambda: 'id(irr).rain_tip();'
+
+  # Local buttons work with no Home Assistant: they call the core directly.
+  - platform: gpio
+    id: start_button
+    name: "Start Button"
+    internal: true
+    pin:
+      number: ${start_pin}
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on_off: 50ms
+    on_multi_click:
+      - timing:
+          - ON for at most 1s
+          - OFF for at least 50ms
+        then:
+          - lambda: 'id(irr).button_press(true, false);'
+      - timing:
+          - ON for at least 2s
+        then:
+          - lambda: 'id(irr).button_press(true, true);'
+  - platform: gpio
+    id: stop_button
+    name: "Stop Button"
+    internal: true
+    pin:
+      number: ${stop_pin}
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on_off: 50ms
+    on_multi_click:
+      - timing:
+          - ON for at most 1s
+          - OFF for at least 50ms
+        then:
+          - lambda: 'id(irr).button_press(false, false);'
+      - timing:
+          - ON for at least 2s
+        then:
+          - lambda: 'id(irr).button_press(false, true);'

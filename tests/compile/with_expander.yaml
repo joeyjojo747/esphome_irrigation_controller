@@ -1,0 +1,34 @@
+# Compile fixture: the full wrapper with the MCP23017 expander and status LED.
+# Same substitutions as esphome/irrigation-controller.yaml. Secrets come from
+# tests/compile/secrets.yaml, which tools/ci/esphome.sh copies from the example.
+substitutions:
+  name: irrigation-expander
+  friendly_name: Irrigation
+  timezone: Australia/Sydney
+  rtc_enabled: "true"
+  version: "0.1.0"
+  output_candidates: "1, 2, 3, 6, 7, 18, 21"
+  flow_pin: "23"
+  rain_pin: "22"
+  start_pin: "10"
+  stop_pin: "14"
+  led_pin: "11"
+  sda_pin: "19"
+  scl_pin: "20"
+  default_outputs: "1, 2, 3, 6, 7, 18"
+  default_master_output: "21"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+packages:
+  irrigation: !include ../../esphome/irrigation-controller/package.yaml
+  expander: !include ../../esphome/irrigation-controller/expander.yaml
+  status_led: !include ../../esphome/irrigation-controller/status_led.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../../esphome/irrigation-controller/components
+    components: [irrigation_core]

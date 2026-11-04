@@ -3,8 +3,13 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 shopt -s nullglob
 
+# secrets.yaml is git-ignored; CI uses the dummy example values.
+cp esphome/secrets.yaml.example esphome/secrets.yaml
+cp esphome/secrets.yaml.example tests/compile/secrets.yaml
+
 for f in tests/compile/*.yaml; do
   case "$f" in
+    */secrets.yaml) continue ;;
     *_bad_*.yaml)
       expect=$(sed -n 's/^# expect: *//p' "$f" | head -n1)
       if [ -z "$expect" ]; then echo "FAIL: $f has no '# expect:' comment"; exit 1; fi
@@ -22,3 +27,7 @@ for f in tests/compile/*.yaml; do
       ;;
   esac
 done
+
+# The user-facing wrapper, without the expander (the fixture above covers the expander).
+esphome config esphome/irrigation-controller.yaml
+esphome compile esphome/irrigation-controller.yaml

@@ -1,0 +1,71 @@
+# ESPHome irrigation controller - user wrapper.
+#
+# What to change before the first flash:
+#   1. Secrets: add the keys from secrets.yaml.example to Device Builder's
+#      secrets.yaml (wifi_ssid, wifi_password, ap_password, ota_password, api_key).
+#   2. Board: the defaults below suit the DFRobot FireBeetle 2 ESP32-C6. For another
+#      board, edit output_candidates and the pin substitutions to match its wiring.
+#   3. Timezone: set `timezone` (an IANA name such as Australia/Sydney).
+#   4. Static IP: optionally add under `wifi:` (merges with the package) -
+#        wifi:
+#          manual_ip: { static_ip: 192.168.1.50, gateway: 192.168.1.1, subnet: 255.255.255.0 }
+#   5. Sensor pins: flow_pin, rain_pin, start_pin, stop_pin, led_pin, sda_pin and
+#      scl_pin must differ from each other and from output_candidates.
+#   6. Expander: for more than 6 zones fit an MCP23017 on the I2C bus and add
+#        expander: !include irrigation-controller/expander.yaml
+#      under `packages:` (and `status_led: !include irrigation-controller/status_led.yaml`
+#      if you fit a status LED on led_pin).
+#
+# Relay outputs are NOT set here. Which pin or MCP channel drives each zone and the
+# master valve/pump, and the relay trigger level, are chosen in Home Assistant under
+# Settings -> Hardware (the "Zone N Output" / "Master Output" selects). Changing them
+# needs no reflash; default_outputs / default_master_output only seed the first boot.
+#
+# Do not change `name` or `friendly_name`: the Home Assistant packages rely on the
+# entity ids (irrigation_*) and action names (esphome.irrigation_controller_*) they produce.
+
+substitutions:
+  name: irrigation-controller
+  friendly_name: Irrigation
+  timezone: Australia/Sydney
+  rtc_enabled: "false"  # "true" if a DS1307/DS3231 RTC is fitted on the I2C bus
+  version: "0.1.0"
+  # Board wiring (FireBeetle 2 ESP32-C6)
+  output_candidates: "1, 2, 3, 6, 7, 18, 21"
+  flow_pin: "23"
+  rain_pin: "22"
+  start_pin: "10"
+  stop_pin: "14"
+  led_pin: "11"
+  sda_pin: "19"
+  scl_pin: "20"
+  # First-boot output assignment only; edit afterwards from Home Assistant.
+  default_outputs: "1, 2, 3, 6, 7, 18"
+  default_master_output: "21"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  project:
+    name: "joeyjojo747.irrigation-controller"
+    version: "${version}"
+
+# Option A (default): packages and component from the local copy in this folder.
+packages:
+  irrigation: !include irrigation-controller/package.yaml
+  # expander: !include irrigation-controller/expander.yaml
+  # status_led: !include irrigation-controller/status_led.yaml
+
+external_components:
+  - source:
+      type: local
+      path: irrigation-controller/components
+
+# Option B (remote): comment out Option A above and use these instead.
+# packages:
+#   irrigation: github://joeyjojo747/esphome_irrigation_controller/esphome/irrigation-controller/package.yaml@v${version}
+#
+# external_components:
+#   - source: github://joeyjojo747/esphome_irrigation_controller@v${version}
+#     path: esphome/irrigation-controller/components
+#     components: [irrigation_core]

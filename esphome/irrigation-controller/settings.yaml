@@ -1,0 +1,443 @@
+# Every setting is editable from Home Assistant with no reflash. The core is the
+# source of truth: entities are optimistic with no restore_value, publish their
+# value from id(irr).settings() at boot, and write back + save_settings() on change.
+# Boot publishing uses publish_state (not number.set) so it does not re-save flash.
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            auto &s = id(irr).settings();
+            id(set_zone_count).publish_state((float) s.zone_count);
+            id(set_ppl).publish_state(s.pulses_per_litre);
+            id(set_leak).publish_state(s.leak_lpm);
+            id(set_settle).publish_state((float) s.flow_settle_s);
+            id(set_mm_tip).publish_state(s.mm_per_tip);
+            id(set_rain_skip).publish_state(s.rain_skip_mm);
+            id(set_zone_cap).publish_state((float) (s.zone_hard_cap_s / 60));
+            id(set_controller_enabled).publish_state(s.controller_enabled);
+            id(set_rain_stops).publish_state(s.rain_sensor_stops_running);
+            id(set_relay_level).publish_state(s.relay_active_high ? "Active high" : "Active low");
+            {
+              static const char *const rt[] = {"None", "Switch NC", "Switch NO", "Tipping bucket"};
+              uint8_t i = (uint8_t) s.rain_type;
+              id(set_rain_type).publish_state(rt[i < 4 ? i : 0]);
+            }
+            {
+              static const char *const fn[] = {"None", "Run Program", "Stop All", "Next Zone", "Rain Delay 24h"};
+              auto f = [](irrigation::ButtonFn v) { uint8_t i = (uint8_t) v; return i < 5 ? i : 0; };
+              id(set_start_short).publish_state(fn[f(s.start_short_fn)]);
+              id(set_start_long).publish_state(fn[f(s.start_long_fn)]);
+              id(set_stop_short).publish_state(fn[f(s.stop_short_fn)]);
+              id(set_stop_long).publish_state(fn[f(s.stop_long_fn)]);
+            }
+            {
+              static const char *const pr[] = {"A", "B", "C", "D", "E", "F", "G", "H"};
+              id(set_button_program).publish_state(pr[s.button_program < 8 ? s.button_program : 0]);
+            }
+            id(set_month_jan).publish_state((float) s.monthly_pct[0]);
+            id(set_month_feb).publish_state((float) s.monthly_pct[1]);
+            id(set_month_mar).publish_state((float) s.monthly_pct[2]);
+            id(set_month_apr).publish_state((float) s.monthly_pct[3]);
+            id(set_month_may).publish_state((float) s.monthly_pct[4]);
+            id(set_month_jun).publish_state((float) s.monthly_pct[5]);
+            id(set_month_jul).publish_state((float) s.monthly_pct[6]);
+            id(set_month_aug).publish_state((float) s.monthly_pct[7]);
+            id(set_month_sep).publish_state((float) s.monthly_pct[8]);
+            id(set_month_oct).publish_state((float) s.monthly_pct[9]);
+            id(set_month_nov).publish_state((float) s.monthly_pct[10]);
+            id(set_month_dec).publish_state((float) s.monthly_pct[11]);
+
+number:
+  - platform: template
+    id: set_zone_count
+    name: "Zone Count"
+    entity_category: config
+    optimistic: true
+    min_value: 1
+    max_value: 16
+    step: 1
+    mode: box
+    set_action:
+      - lambda: |-
+          id(irr).settings().zone_count = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_ppl
+    name: "Pulses per Litre"
+    entity_category: config
+    optimistic: true
+    min_value: 1
+    max_value: 5000
+    step: 1
+    mode: box
+    set_action:
+      - lambda: |-
+          id(irr).settings().pulses_per_litre = x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_leak
+    name: "Leak Threshold"
+    entity_category: config
+    optimistic: true
+    min_value: 0.1
+    max_value: 20
+    step: 0.1
+    mode: box
+    unit_of_measurement: "L/min"
+    set_action:
+      - lambda: |-
+          id(irr).settings().leak_lpm = x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_settle
+    name: "Flow Settle Time"
+    entity_category: config
+    optimistic: true
+    min_value: 10
+    max_value: 300
+    step: 1
+    mode: box
+    unit_of_measurement: "s"
+    set_action:
+      - lambda: |-
+          id(irr).settings().flow_settle_s = (uint16_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_mm_tip
+    name: "mm per Tip"
+    entity_category: config
+    optimistic: true
+    min_value: 0.1
+    max_value: 1.0
+    step: 0.05
+    mode: box
+    unit_of_measurement: "mm"
+    set_action:
+      - lambda: |-
+          id(irr).settings().mm_per_tip = x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_rain_skip
+    name: "Rain Skip Threshold"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 50
+    step: 0.5
+    mode: box
+    unit_of_measurement: "mm"
+    set_action:
+      - lambda: |-
+          id(irr).settings().rain_skip_mm = x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_zone_cap
+    name: "Zone Runtime Limit"
+    entity_category: config
+    optimistic: true
+    min_value: 5
+    max_value: 240
+    step: 1
+    mode: box
+    unit_of_measurement: "min"
+    set_action:
+      - lambda: |-
+          id(irr).settings().zone_hard_cap_s = (uint32_t) x * 60u;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_jan
+    name: "Monthly Adjust Jan"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[0] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_feb
+    name: "Monthly Adjust Feb"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[1] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_mar
+    name: "Monthly Adjust Mar"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[2] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_apr
+    name: "Monthly Adjust Apr"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[3] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_may
+    name: "Monthly Adjust May"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[4] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_jun
+    name: "Monthly Adjust Jun"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[5] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_jul
+    name: "Monthly Adjust Jul"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[6] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_aug
+    name: "Monthly Adjust Aug"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[7] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_sep
+    name: "Monthly Adjust Sep"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[8] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_oct
+    name: "Monthly Adjust Oct"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[9] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_nov
+    name: "Monthly Adjust Nov"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[10] = (uint8_t) x;
+          id(irr).save_settings();
+  - platform: template
+    id: set_month_dec
+    name: "Monthly Adjust Dec"
+    entity_category: config
+    optimistic: true
+    min_value: 0
+    max_value: 200
+    step: 1
+    mode: box
+    unit_of_measurement: "%"
+    set_action:
+      - lambda: |-
+          id(irr).settings().monthly_pct[11] = (uint8_t) x;
+          id(irr).save_settings();
+
+select:
+  - platform: template
+    id: set_relay_level
+    name: "Relay Trigger Level"
+    entity_category: config
+    optimistic: true
+    options:
+      - Active high
+      - Active low
+    set_action:
+      - lambda: 'id(irr).set_relay_active_high(x == "Active high");'
+  - platform: template
+    id: set_rain_type
+    name: "Rain Sensor Type"
+    entity_category: config
+    optimistic: true
+    options:
+      - None
+      - Switch NC
+      - Switch NO
+      - Tipping bucket
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"None", "Switch NC", "Switch NO", "Tipping bucket"};
+          for (int i = 0; i < 4; i++)
+            if (x == o[i]) id(irr).settings().rain_type = (irrigation::RainType) i;
+          id(irr).save_settings();
+  - platform: template
+    id: set_start_short
+    name: "Start Button Short Press"
+    entity_category: config
+    optimistic: true
+    options: &button_fns
+      - None
+      - Run Program
+      - Stop All
+      - Next Zone
+      - Rain Delay 24h
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"None", "Run Program", "Stop All", "Next Zone", "Rain Delay 24h"};
+          for (int i = 0; i < 5; i++)
+            if (x == o[i]) id(irr).settings().start_short_fn = (irrigation::ButtonFn) i;
+          id(irr).save_settings();
+  - platform: template
+    id: set_start_long
+    name: "Start Button Long Press"
+    entity_category: config
+    optimistic: true
+    options: *button_fns
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"None", "Run Program", "Stop All", "Next Zone", "Rain Delay 24h"};
+          for (int i = 0; i < 5; i++)
+            if (x == o[i]) id(irr).settings().start_long_fn = (irrigation::ButtonFn) i;
+          id(irr).save_settings();
+  - platform: template
+    id: set_stop_short
+    name: "Stop Button Short Press"
+    entity_category: config
+    optimistic: true
+    options: *button_fns
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"None", "Run Program", "Stop All", "Next Zone", "Rain Delay 24h"};
+          for (int i = 0; i < 5; i++)
+            if (x == o[i]) id(irr).settings().stop_short_fn = (irrigation::ButtonFn) i;
+          id(irr).save_settings();
+  - platform: template
+    id: set_stop_long
+    name: "Stop Button Long Press"
+    entity_category: config
+    optimistic: true
+    options: *button_fns
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"None", "Run Program", "Stop All", "Next Zone", "Rain Delay 24h"};
+          for (int i = 0; i < 5; i++)
+            if (x == o[i]) id(irr).settings().stop_long_fn = (irrigation::ButtonFn) i;
+          id(irr).save_settings();
+  - platform: template
+    id: set_button_program
+    name: "Button Program"
+    entity_category: config
+    optimistic: true
+    options: [A, B, C, D, E, F, G, H]
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"A", "B", "C", "D", "E", "F", "G", "H"};
+          for (int i = 0; i < 8; i++)
+            if (x == o[i]) id(irr).settings().button_program = (uint8_t) i;
+          id(irr).save_settings();
+
+switch:
+  - platform: template
+    id: set_controller_enabled
+    name: "Controller Enabled"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(irr).settings().controller_enabled = true;
+          id(irr).save_settings();
+    turn_off_action:
+      - lambda: |-
+          id(irr).settings().controller_enabled = false;
+          id(irr).save_settings();
+  - platform: template
+    id: set_rain_stops
+    name: "Rain Sensor Stops Watering"
+    entity_category: config
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(irr).settings().rain_sensor_stops_running = true;
+          id(irr).save_settings();
+    turn_off_action:
+      - lambda: |-
+          id(irr).settings().rain_sensor_stops_running = false;
+          id(irr).save_settings();
+
+text_sensor:
+  # e.g. "Zone 2: GPIO 21 already assigned to Master" after a rejected output change.
+  - platform: template
+    name: "Last Error"
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: 'return id(irr).last_error();'

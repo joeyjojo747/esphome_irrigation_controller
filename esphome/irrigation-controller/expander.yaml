@@ -1,0 +1,8 @@
+# Optional MCP23017 relay expander (adds MCP A0..B7 to the output choices).
+# The irrigation_core block here merges into the one in core.yaml.
+mcp23017:
+  - id: mcp_relays
+    address: 0x20
+
+irrigation_core:
+  expander_id: mcp_relays

@@ -1,0 +1,17 @@
+# Entry point for the irrigation firmware packages. It holds no external_components:
+# the wrapper (irrigation-controller.yaml) declares those, so they can come from a
+# local copy or from GitHub.
+packages:
+  base: !include base.yaml
+  outputs: !include outputs.yaml
+  sprinkler: !include sprinkler.yaml
+  core: !include core.yaml
+  sensors: !include sensors.yaml
+  settings: !include settings.yaml
+  # Optional hardware, enabled by the wrapper (see its header):
+  # expander: !include expander.yaml      # fit an MCP23017 for more than 6 zones
+  # status_led: !include status_led.yaml  # fit an LED on led_pin
+  # Added by the editor/API tasks:
+  # editor_program: !include editor_program.yaml
+  # editor_zone: !include editor_zone.yaml
+  # api_actions: !include api_actions.yaml

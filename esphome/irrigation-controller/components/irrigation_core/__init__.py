@@ -42,6 +42,17 @@ GPIO_NUM = cv.int_range(min=0, max=30)
 OUTPUT_CODE = cv.Any(cv.int_range(min=-1, max=30), cv.int_range(min=100, max=115))
 
 
+def csv_list(validator):
+    """Accept a list or a comma-separated string (a substitution such as "1, 2, 3")."""
+
+    def check(value):
+        if isinstance(value, str):
+            value = [p.strip() for p in value.split(",") if p.strip()]
+        return cv.ensure_list(validator)(value)
+
+    return check
+
+
 def validate_slot(value):
     """`slot: 1..16 | master` -> internal index 0..15, master 16."""
     if isinstance(value, str) and value.strip().lower() == "master":
@@ -82,12 +93,12 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_TIME_ID): cv.use_id(time_.RealTimeClock),
             cv.Optional(CONF_FLOW_SENSOR): cv.use_id(sensor.Sensor),
             cv.Required(CONF_OUTPUT_CANDIDATES): cv.All(
-                cv.ensure_list(GPIO_NUM), cv.Length(min=1)
+                csv_list(GPIO_NUM), cv.Length(min=1)
             ),
-            cv.Optional(CONF_RESERVED_PINS, default=[]): cv.ensure_list(GPIO_NUM),
+            cv.Optional(CONF_RESERVED_PINS, default=[]): csv_list(GPIO_NUM),
             cv.Optional(CONF_EXPANDER_ID): cv.use_id(mcp23x17_base.MCP23X17Base),
             cv.Optional(CONF_DEFAULT_OUTPUTS, default=[]): cv.All(
-                cv.ensure_list(OUTPUT_CODE), cv.Length(max=NUM_ZONES)
+                csv_list(OUTPUT_CODE), cv.Length(max=NUM_ZONES)
             ),
             cv.Optional(CONF_DEFAULT_MASTER_OUTPUT, default=-1): OUTPUT_CODE,
             cv.Optional(CONF_PROGRAM_NAME_TEXTS): cv.All(

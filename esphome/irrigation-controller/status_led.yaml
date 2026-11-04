@@ -1,0 +1,11 @@
+# Optional status LED on ${led_pin}. The core decides the pattern (clock invalid,
+# watering, rain hold) and acknowledges button presses with a short flash.
+output:
+  - platform: gpio
+    id: status_led_out
+    pin: ${led_pin}
+
+interval:
+  - interval: 50ms
+    then:
+      - lambda: 'id(status_led_out).set_state(id(irr).status_led_level());'

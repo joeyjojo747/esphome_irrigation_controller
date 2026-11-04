@@ -1,0 +1,159 @@
+# Relay outputs. Every slot goes through the runtime output map in irrigation_core,
+# so the pin behind a zone is chosen from Home Assistant (Settings), not here.
+# The switches are internal: the sprinkler controller drives them and exposes Zone N.
+switch:
+  - platform: irrigation_core
+    id: zone_out_1
+    name: "Zone 1 Relay"
+    slot: 1
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_2
+    name: "Zone 2 Relay"
+    slot: 2
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_3
+    name: "Zone 3 Relay"
+    slot: 3
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_4
+    name: "Zone 4 Relay"
+    slot: 4
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_5
+    name: "Zone 5 Relay"
+    slot: 5
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_6
+    name: "Zone 6 Relay"
+    slot: 6
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_7
+    name: "Zone 7 Relay"
+    slot: 7
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_8
+    name: "Zone 8 Relay"
+    slot: 8
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_9
+    name: "Zone 9 Relay"
+    slot: 9
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_10
+    name: "Zone 10 Relay"
+    slot: 10
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_11
+    name: "Zone 11 Relay"
+    slot: 11
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_12
+    name: "Zone 12 Relay"
+    slot: 12
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_13
+    name: "Zone 13 Relay"
+    slot: 13
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_14
+    name: "Zone 14 Relay"
+    slot: 14
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_15
+    name: "Zone 15 Relay"
+    slot: 15
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: zone_out_16
+    name: "Zone 16 Relay"
+    slot: 16
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: irrigation_core
+    id: master_out
+    name: "Master Relay"
+    slot: master
+    internal: true
+    restore_mode: ALWAYS_OFF
+
+select:
+  - platform: irrigation_core
+    name: "Zone 1 Output"
+    slot: 1
+  - platform: irrigation_core
+    name: "Zone 2 Output"
+    slot: 2
+  - platform: irrigation_core
+    name: "Zone 3 Output"
+    slot: 3
+  - platform: irrigation_core
+    name: "Zone 4 Output"
+    slot: 4
+  - platform: irrigation_core
+    name: "Zone 5 Output"
+    slot: 5
+  - platform: irrigation_core
+    name: "Zone 6 Output"
+    slot: 6
+  - platform: irrigation_core
+    name: "Zone 7 Output"
+    slot: 7
+  - platform: irrigation_core
+    name: "Zone 8 Output"
+    slot: 8
+  - platform: irrigation_core
+    name: "Zone 9 Output"
+    slot: 9
+  - platform: irrigation_core
+    name: "Zone 10 Output"
+    slot: 10
+  - platform: irrigation_core
+    name: "Zone 11 Output"
+    slot: 11
+  - platform: irrigation_core
+    name: "Zone 12 Output"
+    slot: 12
+  - platform: irrigation_core
+    name: "Zone 13 Output"
+    slot: 13
+  - platform: irrigation_core
+    name: "Zone 14 Output"
+    slot: 14
+  - platform: irrigation_core
+    name: "Zone 15 Output"
+    slot: 15
+  - platform: irrigation_core
+    name: "Zone 16 Output"
+    slot: 16
+  - platform: irrigation_core
+    name: "Master Output"
+    slot: master

@@ -1,0 +1,242 @@
+irrigation_core:
+  id: irr
+  sprinkler_id: sprinkler_ctrl
+  time_id: local_time
+  flow_sensor: flow_rate
+  output_candidates: ${output_candidates}
+  reserved_pins:
+    - "${flow_pin}"
+    - "${rain_pin}"
+    - "${start_pin}"
+    - "${stop_pin}"
+    - "${led_pin}"
+    - "${sda_pin}"
+    - "${scl_pin}"
+  default_outputs: ${default_outputs}
+  default_master_output: "${default_master_output}"
+  on_event:
+    - homeassistant.event:
+        event: esphome.irrigation_event
+        data:
+          node: "${name}"
+          type: !lambda 'return type;'
+          json: !lambda 'return json;'
+
+sensor:
+  - platform: template
+    name: "Weather Adjust"
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: 5s
+    lambda: 'return (float) id(irr).current_weather_pct();'
+  - platform: template
+    name: "Rain Last 24h"
+    unit_of_measurement: "mm"
+    accuracy_decimals: 1
+    device_class: precipitation
+    state_class: measurement
+    update_interval: 5s
+    lambda: 'return id(irr).rain_mm_24h();'
+  # float32 holds an epoch timestamp to about a minute, which is fine for "Next Run".
+  - platform: template
+    name: "Next Run"
+    device_class: timestamp
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      int32_t t = id(irr).next_run_ts();
+      if (t <= 0) return NAN;
+      return (float) t;
+  - platform: template
+    name: "Remaining Time"
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    device_class: duration
+    state_class: measurement
+    update_interval: 5s
+    lambda: 'return (float) id(irr).remaining_s();'
+  - platform: template
+    name: "Total Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).total_litres();'
+  - platform: template
+    name: "Zone 1 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(0);'
+  - platform: template
+    name: "Zone 2 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(1);'
+  - platform: template
+    name: "Zone 3 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(2);'
+  - platform: template
+    name: "Zone 4 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(3);'
+  - platform: template
+    name: "Zone 5 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(4);'
+  - platform: template
+    name: "Zone 6 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(5);'
+  - platform: template
+    name: "Zone 7 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(6);'
+  - platform: template
+    name: "Zone 8 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(7);'
+  - platform: template
+    name: "Zone 9 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(8);'
+  - platform: template
+    name: "Zone 10 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(9);'
+  - platform: template
+    name: "Zone 11 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(10);'
+  - platform: template
+    name: "Zone 12 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(11);'
+  - platform: template
+    name: "Zone 13 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(12);'
+  - platform: template
+    name: "Zone 14 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(13);'
+  - platform: template
+    name: "Zone 15 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(14);'
+  - platform: template
+    name: "Zone 16 Water"
+    unit_of_measurement: "L"
+    accuracy_decimals: 1
+    device_class: water
+    state_class: total_increasing
+    update_interval: 5s
+    lambda: 'return id(irr).zone_litres_total(15);'
+
+text_sensor:
+  - platform: template
+    name: "Status"
+    update_interval: 5s
+    lambda: 'return id(irr).status_text();'
+  - platform: template
+    name: "Active Zone"
+    update_interval: 5s
+    lambda: 'return id(irr).active_zone_name();'
+  - platform: template
+    name: "Active Program"
+    update_interval: 5s
+    lambda: 'return id(irr).active_program_name();'
+
+binary_sensor:
+  - platform: template
+    name: "Rain Hold"
+    lambda: 'return id(irr).rain_hold();'
+  - platform: template
+    name: "Leak"
+    device_class: problem
+    lambda: 'return id(irr).leak_active();'
+  - platform: template
+    name: "Flow Alarm"
+    device_class: problem
+    lambda: 'return id(irr).flow_alarm_active();'
+  - platform: template
+    name: "Clock Valid"
+    lambda: 'return id(irr).clock_valid();'
+  - platform: template
+    name: "HA Connected"
+    device_class: connectivity
+    lambda: 'return api::global_api_server->is_connected();'
+
+button:
+  - platform: template
+    name: "Stop All"
+    on_press:
+      - lambda: 'id(irr).stop_all();'
+  - platform: template
+    name: "Rain Delay 24h"
+    on_press:
+      - lambda: 'id(irr).set_rain_delay_hours(24);'
+  - platform: template
+    name: "Clear Rain Delay"
+    on_press:
+      - lambda: 'id(irr).clear_rain_delay();'

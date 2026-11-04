@@ -1,0 +1,77 @@
+# Sixteen valve slots. The core owns run times and sequencing; the sprinkler
+# controller only provides pump/valve ordering and the Zone N switches.
+sprinkler:
+  - id: sprinkler_ctrl
+    main_switch:
+      name: "Irrigation Main"
+      internal: true
+    auto_advance_switch:
+      name: "Irrigation Auto Advance"
+      internal: true
+    pump_start_pump_delay: 2s
+    pump_stop_valve_delay: 2s
+    valves:
+      - valve_switch: "Zone 1"
+        valve_switch_id: zone_out_1
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 2"
+        valve_switch_id: zone_out_2
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 3"
+        valve_switch_id: zone_out_3
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 4"
+        valve_switch_id: zone_out_4
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 5"
+        valve_switch_id: zone_out_5
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 6"
+        valve_switch_id: zone_out_6
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 7"
+        valve_switch_id: zone_out_7
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 8"
+        valve_switch_id: zone_out_8
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 9"
+        valve_switch_id: zone_out_9
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 10"
+        valve_switch_id: zone_out_10
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 11"
+        valve_switch_id: zone_out_11
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 12"
+        valve_switch_id: zone_out_12
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 13"
+        valve_switch_id: zone_out_13
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 14"
+        valve_switch_id: zone_out_14
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 15"
+        valve_switch_id: zone_out_15
+        pump_switch_id: master_out
+        run_duration: 15min
+      - valve_switch: "Zone 16"
+        valve_switch_id: zone_out_16
+        pump_switch_id: master_out
+        run_duration: 15min
