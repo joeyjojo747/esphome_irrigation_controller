@@ -63,7 +63,7 @@ class Runner {
   };
 
   void try_start(uint32_t now_s);
-  void finish_step(Result r, uint32_t now_s);
+  void finish_step(Result r, uint32_t now_s, bool end_instance = false);
   void end_instance_front();
 
   ValveDriver* driver_;

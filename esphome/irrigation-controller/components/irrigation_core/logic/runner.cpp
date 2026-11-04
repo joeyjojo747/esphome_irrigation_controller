@@ -20,7 +20,7 @@ void Runner::end_instance_front() {
   if (done.started && on_program_finished) on_program_finished(done.id, done.program);
 }
 
-void Runner::finish_step(Result r, uint32_t now_s) {
+void Runner::finish_step(Result r, uint32_t now_s, bool end_instance) {
   // Precondition: state_ == RUNNING, queue_ non-empty.
   Instance& inst = queue_.front();
   const Step& s = inst.steps[inst.idx];
@@ -31,7 +31,7 @@ void Runner::finish_step(Result r, uint32_t now_s) {
   }
   inst.idx++;
   state_ = State::IDLE;
-  bool last = inst.idx >= inst.steps.size();
+  bool last = end_instance || inst.idx >= inst.steps.size();
   if (on_step_finished) on_step_finished(ev);
   if (last) end_instance_front();
 }
@@ -66,8 +66,7 @@ void Runner::stop_all(uint32_t now_s) {
   // Queued (not yet started) programs are dropped unlogged; only the front instance can be reported.
   queue_.erase(queue_.begin() + 1, queue_.end());
   if (state_ == State::RUNNING) {
-    queue_.front().idx = queue_.front().steps.size() - 1;
-    finish_step(Result::STOPPED, now_s);
+    finish_step(Result::STOPPED, now_s, true);
   } else {
     end_instance_front();
   }
@@ -100,8 +99,7 @@ void Runner::set_hold(bool hold, uint32_t now_s) {
     if (state_ == State::RUNNING) {
       driver_->stop_all();
       Instance& inst = queue_.front();
-      inst.idx = inst.steps.size() - 1;
-      finish_step(Result::STOPPED, now_s);
+      finish_step(Result::STOPPED, now_s, true);
     } else {
       end_instance_front();
     }
