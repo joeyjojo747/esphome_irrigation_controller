@@ -6,3 +6,4 @@ __pycache__/
 .pytest_cache/
 reference_docs/custom.yaml
 .superpowers/
+reference_docs/*.png

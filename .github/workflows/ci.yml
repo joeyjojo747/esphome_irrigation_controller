@@ -37,7 +37,7 @@ jobs:
         with:
           path: |
             ~/.platformio
-            .esphome
+            tests/compile/.esphome
           key: esphome-${{ hashFiles('tools/requirements-esphome.txt', 'tests/compile/*.yaml') }}
           restore-keys: esphome-
       - run: tools/ci/esphome.sh
