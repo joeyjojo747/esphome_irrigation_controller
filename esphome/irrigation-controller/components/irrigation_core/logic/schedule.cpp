@@ -27,6 +27,40 @@ bool is_due_on(const Program& p, int32_t day) {
   return false;
 }
 
+uint16_t effective_pct(uint8_t program_pct, uint8_t month_pct, uint16_t weather_pct) {
+  const uint64_t prod = static_cast<uint64_t>(program_pct) * month_pct * weather_pct;
+  const uint64_t v = (prod + 5000) / 10000;
+  return static_cast<uint16_t>(v > 250 ? 250 : v);
+}
+
+StartDecision decide_start(const Program& p, const StartContext& c, uint16_t pct) {
+  if (!c.controller_enabled) return StartDecision::SKIP_CONTROLLER_OFF;
+  if (c.rain_delay_active) return StartDecision::SKIP_RAIN_DELAY;
+  if (c.rain_hold) return StartDecision::SKIP_RAIN_SENSOR;
+  if (c.weather_skip_valid && p.weather_adjust) return StartDecision::SKIP_WEATHER;
+  if (pct == 0) return StartDecision::SKIP_WEATHER;
+  return StartDecision::RUN;
+}
+
+Result to_result(StartDecision d) {
+  switch (d) {
+    case StartDecision::SKIP_CONTROLLER_OFF: return Result::SKIPPED_CONTROLLER_OFF;
+    case StartDecision::SKIP_RAIN_DELAY: return Result::SKIPPED_RAIN_DELAY;
+    case StartDecision::SKIP_RAIN_SENSOR: return Result::SKIPPED_RAIN_SENSOR;
+    case StartDecision::SKIP_WEATHER: return Result::SKIPPED_WEATHER;
+    case StartDecision::RUN: break;
+  }
+  return Result::COMPLETED;
+}
+
+uint16_t active_weather_pct(const WeatherAdjust& w, const Program& p, uint32_t now_ts) {
+  return (now_ts < w.valid_until_ts && p.weather_adjust) ? w.pct : 100;
+}
+
+bool active_weather_skip(const WeatherAdjust& w, uint32_t now_ts) {
+  return w.skip && now_ts < w.valid_until_ts;
+}
+
 void Scheduler::reset() {
   last_eval_ = -1;
   for (auto& row : last_fired_day_)
