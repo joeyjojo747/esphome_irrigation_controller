@@ -2,19 +2,10 @@
 
 import asyncio
 
-import pytest
-
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_capture_events
 
 TS = 1_700_000_000
-
-
-@pytest.fixture
-def expected_lingering_timers():
-    """The 30-minute refresh automation's time_pattern trigger leaves a timer."""
-    return True
-
 
 async def settle(hass):
     """block_till_done, plus the loop.call_soon hop the event trigger platform uses."""
@@ -123,7 +114,8 @@ async def test_upcoming_sensor_from_plan(pkg_hass, device):
     assert device.calls["get_plan"] == [{"days": 14}]
     assert len(plans) == 1
     st = hass.states.get("sensor.irrigation_upcoming")
-    assert st.state == "2026-11-03T06:00:00+11:00"
+    # A timestamp sensor stores its state in UTC; the attribute keeps local time.
+    assert dt_util.parse_datetime(st.state) == dt_util.parse_datetime("2026-11-03T06:00:00+11:00")
     run = st.attributes["runs"][0]
     assert run["program"] == 0 and run["name"] == "Program A"
     assert run["start"] == "2026-11-03T06:00:00+11:00"

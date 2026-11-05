@@ -32,6 +32,12 @@ def load_packages() -> dict:
 
 
 @pytest.fixture
+def expected_lingering_timers() -> bool:
+    """The 30-minute refresh automation time_pattern trigger leaves a timer."""
+    return True
+
+
+@pytest.fixture
 async def pkg_hass(hass: HomeAssistant) -> HomeAssistant:
     """A test HA with every irrigation package merged and each domain set up."""
     config: dict = {}
