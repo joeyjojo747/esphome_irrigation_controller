@@ -1,0 +1,3 @@
+# Minimal config for HA check_config (default_config deliberately omitted).
+homeassistant:
+  packages: !include_dir_named ../../../packages/irrigation
