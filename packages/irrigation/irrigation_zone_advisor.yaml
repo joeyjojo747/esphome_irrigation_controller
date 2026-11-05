@@ -1,12 +1,14 @@
 # Irrigation controller: zone advisor. script.irrigation_suggest_zone suggests a
 # max cycle and soak time for one zone from its soil, slope and precipitation rate.
 # Fields: zone (1-16), apply (bool, default false). Response: {max_cycle_min, soak_min}.
-# It refreshes the config backup first and reads the zone from
-# sensor.irrigation_config_backup. With apply true it calls set_zone with that zone's
-# backup values (same keys as the action arguments, zone_output unchanged) and the
-# new max_cycle_min / soak_min.
-# Returns (0, 0) and changes nothing when the zone is not found, the soil is not
-# 0-5, precip is missing or not above 0, or the cycle would be 60 minutes or more.
+# It reads the zone from a fresh esphome get_config response (it does not use or
+# refresh the backup sensor). With apply true it calls set_zone with that zone's
+# values (same keys as the action arguments, zone_output unchanged) and the new
+# max_cycle_min / soak_min. After set_zone the device emits config_changed and the
+# event router refreshes the config backup, so no backup call is needed here.
+# Returns (0, 0) and changes nothing when get_config fails or is malformed, the zone is
+# not found, the soil is not 0-5, precip is missing or not above 0, or the cycle would
+# be 60 minutes or more.
 # Soil codes follow the firmware enum: 0 SAND, 1 LOAMY_SAND, 2 SANDY_LOAM, 3 LOAM,
 # 4 CLAY_LOAM, 5 CLAY.
 # Entity ids depend on the device name "irrigation-controller": do not change it.
@@ -21,14 +23,14 @@ script:
       apply:
         description: Write the suggestion to the controller (default false).
     sequence:
-      - action: script.irrigation_backup_config
-      # The backup sensor updates from an event, a few loop iterations later.
-      - delay:
-          milliseconds: 100
+      - action: esphome.irrigation_controller_get_config
+        response_variable: cfg
       - variables:
-          cfg: "{{ state_attr('sensor.irrigation_config_backup', 'config') }}"
+          cfg_ok: >-
+            {{ cfg is mapping and cfg.error is not defined and cfg.zones is defined
+               and cfg.programs is defined and cfg.settings is defined }}
           zones: >-
-            {% if cfg is mapping and cfg.zones is defined %}
+            {% if cfg_ok %}
               {{ cfg.zones | selectattr('zone', 'eq', zone | int(0)) | list }}
             {% else %}[]{% endif %}
           zdata: "{{ zones[0] if zones | count > 0 else {} }}"

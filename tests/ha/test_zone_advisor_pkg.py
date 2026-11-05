@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from test_sync import make_config, settle
+from helpers import make_config, settle
 
 # firmware soil enum: SAND, LOAMY_SAND, SANDY_LOAM, LOAM, CLAY_LOAM, CLAY
 SAND, LOAMY_SAND, SANDY_LOAM, LOAM, CLAY_LOAM, CLAY = range(6)
@@ -84,3 +84,22 @@ async def test_config_unavailable_returns_zero(pkg_hass, device):
     res = await suggest(pkg_hass, device, {"error": "boom"}, apply=True)
     assert (res["max_cycle_min"], res["soak_min"]) == (0, 0)
     assert device.calls["set_zone"] == []
+
+
+async def test_get_config_error_with_apply_does_nothing(pkg_hass, device):
+    res = await suggest(pkg_hass, device, {"error": "boom"}, apply=True)
+    assert (res["max_cycle_min"], res["soak_min"]) == (0, 0)
+    assert device.calls["set_zone"] == []
+
+
+async def test_malformed_config_does_nothing(pkg_hass, device):
+    cfg = cfg_with()
+    del cfg["settings"]
+    res = await suggest(pkg_hass, device, cfg, apply=True)
+    assert (res["max_cycle_min"], res["soak_min"]) == (0, 0)
+    assert device.calls["set_zone"] == []
+
+
+async def test_uses_fresh_config_not_backup(pkg_hass, device):
+    await suggest(pkg_hass, device, cfg_with())
+    assert pkg_hass.states.get("sensor.irrigation_config_backup").attributes.get("config") is None
