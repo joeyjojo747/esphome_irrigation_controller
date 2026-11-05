@@ -15,6 +15,13 @@ def rec(seq, ts, inst=1, p=0, z=1, r="completed", act=60, l=1.5, plan=60):
             "act": act, "l": l, "r": r}
 
 
+async def settle(hass):
+    """block_till_done, plus the loop.call_soon hop the event trigger platform uses."""
+    for _ in range(3):
+        await hass.async_block_till_done()
+        await asyncio.sleep(0)
+
+
 def fire(hass, type_, payload, node=NODE):
     hass.bus.async_fire("esphome.irrigation_event",
                         {"node": node, "type": type_, "json": json.dumps(payload)})
@@ -32,7 +39,7 @@ def helper(hass, name):
 
 async def call_script(hass, name):
     await hass.services.async_call("script", name, {}, blocking=True)
-    await hass.async_block_till_done()
+    await settle(hass)
 
 
 def make_config(swapped=False):
@@ -82,7 +89,7 @@ async def test_router_refires_typed_event(pkg_hass, device):
     hass = pkg_hass
     events = async_capture_events(hass, "irrigation_run_finished")
     fire(hass, "run_finished", rec(7, 5000))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(events) == 1
     assert events[0].data["seq"] == 7
     assert events[0].data["ts"] == 5000
@@ -92,7 +99,7 @@ async def test_router_refires_typed_event(pkg_hass, device):
 
     # An older record does not move the helpers back.
     fire(hass, "run_finished", rec(3, 4000))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(events) == 2
     assert helper(hass, "last_ts") == 5000
     assert helper(hass, "last_seq") == 7
@@ -104,7 +111,7 @@ async def test_router_refires_other_types(pkg_hass, device):
     skipped = async_capture_events(hass, "irrigation_skipped")
     fire(hass, "alert", {"kind": "flow_high", "z": 3, "flow": 12.5, "limit": 10.0})
     fire(hass, "skipped", rec(9, 6000, inst=0, z=255, r="skipped_rain_delay"))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert alerts[0].data == {"kind": "flow_high", "z": 3, "flow": 12.5, "limit": 10.0}
     assert skipped[0].data["r"] == "skipped_rain_delay"
     assert helper(hass, "last_ts") == 6000
@@ -114,7 +121,7 @@ async def test_router_ignores_other_nodes(pkg_hass, device):
     hass = pkg_hass
     events = async_capture_events(hass, "irrigation_run_finished")
     fire(hass, "run_finished", rec(7, 5000), node="other-node")
-    await hass.async_block_till_done()
+    await settle(hass)
     assert events == []
     assert helper(hass, "last_ts") == 0
 
@@ -123,7 +130,7 @@ async def test_config_changed_backs_up_without_refresh_script(pkg_hass, device):
     hass = pkg_hass
     device.respond("get_config", make_config())
     fire(hass, "config_changed", {})
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(device.calls["get_config"]) == 1
     assert hass.states.get("sensor.irrigation_config_backup") is not None
 
@@ -133,7 +140,7 @@ async def test_config_changed_runs_refresh_when_present(pkg_hass, device):
     device.respond("get_config", make_config())
     refresh = register_refresh_stub(hass)
     fire(hass, "config_changed", {})
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(refresh) == 1
     assert len(device.calls["get_config"]) == 1
 
@@ -211,10 +218,10 @@ async def test_reconnect_syncs_and_refreshes(pkg_hass, device):
     device.respond("get_run_log", {"records": [rec(1, 1000)], "last": 1})
     replayed = async_capture_events(hass, "irrigation_replayed_record")
     hass.states.async_set("sensor.irrigation_status", "unavailable")
-    await hass.async_block_till_done()
+    await settle(hass)
     assert replayed == [] and refresh == []
     hass.states.async_set("sensor.irrigation_status", "idle")
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(device.calls["get_run_log"]) == 1
     assert len(replayed) == 1
     assert len(refresh) == 1
@@ -228,14 +235,14 @@ async def test_history_capped_and_7_days(pkg_hass, device):
     now = int(time.time())
     fire(hass, "run_finished", rec(1, now - 8 * 86400))
     fire(hass, "run_finished", rec(2, now - 6 * 86400))
-    await hass.async_block_till_done()
+    await settle(hass)
     st = hass.states.get("sensor.irrigation_run_history")
     assert st.state == "1"
     assert [r["seq"] for r in st.attributes["records"]] == [2]
 
     for i in range(310):
         hass.bus.async_fire("irrigation_replayed_record", rec(100 + i, now - 5 * 86400 + i))
-    await hass.async_block_till_done()
+    await settle(hass)
     st = hass.states.get("sensor.irrigation_run_history")
     assert st.state == "300"
     seqs = [r["seq"] for r in st.attributes["records"]]
@@ -244,7 +251,7 @@ async def test_history_capped_and_7_days(pkg_hass, device):
 
     # A repeat of the same (ts, seq) does not duplicate.
     hass.bus.async_fire("irrigation_replayed_record", rec(409, now - 5 * 86400 + 309))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert hass.states.get("sensor.irrigation_run_history").state == "300"
 
 
@@ -307,7 +314,7 @@ async def test_restore_without_backup_does_nothing(pkg_hass, device):
         await pkg_hass.services.async_call("script", "irrigation_restore_config", {}, blocking=True)
     except Exception:  # noqa: BLE001 - the script may surface its error stop
         pass
-    await pkg_hass.async_block_till_done()
+    await settle(pkg_hass)
     assert device.calls["set_zone"] == []
     assert device.calls["set_settings"] == []
 
