@@ -1,0 +1,1273 @@
+# Irrigation dashboard (Home Assistant Lovelace, YAML / raw configuration editor).
+# Seven views: overview, siteplan, calendar, programs, zones, water, settings.
+#
+# Native HA cards stand in for the three Ultra Card sections (overview summary, programs
+# editor, zones editor). Each is marked "ULTRA CARD:"; Task 19 Step 4 replaces them with the
+# Ultra Card visual-editor export on the user's HA. No Ultra Card schema is hand-written.
+#
+# Entity ids depend on the device name "irrigation-controller" (friendly name "Irrigation"):
+# do not rename the device. tests/ha/test_dashboard.py checks every irrigation_* id used here.
+# The site plan card is a copy of floorplan/irrigation-floorplan.yaml (a test keeps them equal).
+title: Irrigation
+views:
+  # ---------------------------------------------------------------- overview
+  - title: Overview
+    path: overview
+    icon: mdi:sprinkler-variant
+    cards:
+      # Alarm banners: each shows only while its binary sensor is on.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.irrigation_leak
+            state: "on"
+        card:
+          type: markdown
+          content: "## LEAK DETECTED\nWater is flowing while no zone should be running. Check the pipes."
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.irrigation_flow_alarm
+            state: "on"
+        card:
+          type: markdown
+          content: "## FLOW ALARM\nThe flow rate is outside the learned range for the running zone."
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.irrigation_rain_hold
+            state: "on"
+        card:
+          type: markdown
+          content: "## RAIN HOLD\nWatering is held because of rain or a rain delay."
+      # ULTRA CARD: replace with Ultra Card visual-editor export on the user's HA (Task 19 Step 4)
+      - type: entities
+        title: Status
+        show_header_toggle: false
+        entities:
+          - entity: sensor.irrigation_status
+            name: Status
+          - entity: sensor.irrigation_active_zone
+            name: Active zone
+          - entity: sensor.irrigation_remaining_time
+            name: Time remaining
+          - entity: sensor.irrigation_flow_rate
+            name: Flow
+          - entity: sensor.irrigation_water_today
+            name: Irrigation Water Today
+          - entity: sensor.irrigation_cost_today
+            name: Irrigation Cost Today
+          - entity: sensor.irrigation_next_run
+            name: Next run
+          - entity: sensor.irrigation_weather_decision
+            name: Weather decision
+          - entity: sensor.irrigation_advice
+            name: Advice
+      - type: markdown
+        title: Advice summary
+        content: >-
+          {{ state_attr('sensor.irrigation_advice', 'summary') or 'No advice yet.' }}
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: button
+            name: Stop All
+            icon: mdi:stop-circle
+            tap_action:
+              action: perform-action
+              perform_action: esphome.irrigation_controller_stop_all
+          - type: button
+            name: Rain Delay 24h
+            icon: mdi:weather-pouring
+            tap_action:
+              action: perform-action
+              perform_action: esphome.irrigation_controller_rain_delay
+              data:
+                hours: 24
+          - type: button
+            name: Run Program A
+            icon: mdi:play-circle
+            tap_action:
+              action: perform-action
+              perform_action: esphome.irrigation_controller_run_program
+              data:
+                program: 0
+  # ---------------------------------------------------------------- site plan
+  - title: Site plan
+    path: siteplan
+    icon: mdi:map
+    panel: true
+    cards:
+        # ha-floorplan (HACS: ExperienceLovelace/ha-floorplan) card for the irrigation site plan.
+        # Copy www/irrigation/ to /config/www/irrigation/ (served as /local/irrigation/), then add this
+        # as a card on the dashboard Site plan view. Rule syntax follows ha-floorplan v1.x.
+        #
+        # The Active Zone sensor holds the zone NAME (or None), not a number, so the alarm test uses
+        # each zone own switch: switch on + flow alarm on == this is the active zone, and it is in alarm.
+        #   switch unavailable/unknown -> zone-disabled
+        #   switch on + flow alarm on  -> zone-alarm
+        #   switch on                  -> zone-running
+        #   otherwise                  -> zone-idle
+      - type: custom:floorplan-card
+        config:
+          image: /local/irrigation/siteplan.svg
+          stylesheet: /local/irrigation/siteplan.css
+          rules:
+            - entity: sensor.irrigation_status
+              element: controller-1
+              tap_action:
+                action: more-info
+              hover_action:
+                action: hover-info
+            - entities:
+                - switch.irrigation_zone_1
+                - binary_sensor.irrigation_flow_alarm
+              element: zone-01
+              tap_action:
+                action: call-service
+                service: script.irrigation_siteplan_run_zone
+                service_data:
+                  zone: 1
+                  minutes: 5
+                confirmation:
+                  text: Run zone 1 for 5 minutes?
+              state_action:
+                action: call-service
+                service: floorplan.class_set
+                service_data:
+                  class: >-
+                    ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_1'].state) ? 'zone-disabled' :
+                    hass.states['switch.irrigation_zone_1'].state === 'on' ?
+                    (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+                    'zone-idle'}
+            - entities:
+                - switch.irrigation_zone_2
+                - binary_sensor.irrigation_flow_alarm
+              element: zone-02
+              tap_action:
+                action: call-service
+                service: script.irrigation_siteplan_run_zone
+                service_data:
+                  zone: 2
+                  minutes: 5
+                confirmation:
+                  text: Run zone 2 for 5 minutes?
+              state_action:
+                action: call-service
+                service: floorplan.class_set
+                service_data:
+                  class: >-
+                    ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_2'].state) ? 'zone-disabled' :
+                    hass.states['switch.irrigation_zone_2'].state === 'on' ?
+                    (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+                    'zone-idle'}
+            - entities:
+                - switch.irrigation_zone_3
+                - binary_sensor.irrigation_flow_alarm
+              element: zone-03
+              tap_action:
+                action: call-service
+                service: script.irrigation_siteplan_run_zone
+                service_data:
+                  zone: 3
+                  minutes: 5
+                confirmation:
+                  text: Run zone 3 for 5 minutes?
+              state_action:
+                action: call-service
+                service: floorplan.class_set
+                service_data:
+                  class: >-
+                    ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_3'].state) ? 'zone-disabled' :
+                    hass.states['switch.irrigation_zone_3'].state === 'on' ?
+                    (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+                    'zone-idle'}
+            - entities:
+                - switch.irrigation_zone_4
+                - binary_sensor.irrigation_flow_alarm
+              element: zone-04
+              tap_action:
+                action: call-service
+                service: script.irrigation_siteplan_run_zone
+                service_data:
+                  zone: 4
+                  minutes: 5
+                confirmation:
+                  text: Run zone 4 for 5 minutes?
+              state_action:
+                action: call-service
+                service: floorplan.class_set
+                service_data:
+                  class: >-
+                    ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_4'].state) ? 'zone-disabled' :
+                    hass.states['switch.irrigation_zone_4'].state === 'on' ?
+                    (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+                    'zone-idle'}
+            - entities:
+                - switch.irrigation_zone_5
+                - binary_sensor.irrigation_flow_alarm
+              element: zone-05
+              tap_action:
+                action: call-service
+                service: script.irrigation_siteplan_run_zone
+                service_data:
+                  zone: 5
+                  minutes: 5
+                confirmation:
+                  text: Run zone 5 for 5 minutes?
+              state_action:
+                action: call-service
+                service: floorplan.class_set
+                service_data:
+                  class: >-
+                    ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_5'].state) ? 'zone-disabled' :
+                    hass.states['switch.irrigation_zone_5'].state === 'on' ?
+                    (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+                    'zone-idle'}
+            - entities:
+                - switch.irrigation_zone_6
+                - binary_sensor.irrigation_flow_alarm
+              element: zone-06
+              tap_action:
+                action: call-service
+                service: script.irrigation_siteplan_run_zone
+                service_data:
+                  zone: 6
+                  minutes: 5
+                confirmation:
+                  text: Run zone 6 for 5 minutes?
+              state_action:
+                action: call-service
+                service: floorplan.class_set
+                service_data:
+                  class: >-
+                    ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_6'].state) ? 'zone-disabled' :
+                    hass.states['switch.irrigation_zone_6'].state === 'on' ?
+                    (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+                    'zone-idle'}
+  # ---------------------------------------------------------------- calendar
+  - title: Calendar
+    path: calendar
+    icon: mdi:calendar
+    cards:
+      - type: calendar
+        title: Watering (list)
+        initial_view: listWeek
+        entities:
+          - calendar.irrigation
+      - type: calendar
+        title: Watering (month)
+        initial_view: dayGridMonth
+        entities:
+          - calendar.irrigation
+      - type: markdown
+        title: Upcoming watering
+        content: >-
+          {% set runs = state_attr('sensor.irrigation_upcoming', 'runs') or [] %}
+          {% if runs | count == 0 %}Nothing scheduled in the next 14 days.{% endif %}
+          {% for r in runs %}
+          - {{ as_timestamp(r.start) | timestamp_custom('%a %d %b %H:%M') }}: {{ r.name }}, {{ r.minutes }} min ({{ r.pct }}%)
+          {% endfor %}
+  # ---------------------------------------------------------------- programs
+  - title: Programs
+    path: programs
+    icon: mdi:calendar-clock
+    cards:
+      # ULTRA CARD: replace with Ultra Card visual-editor export on the user's HA (Task 19 Step 4)
+      - type: entities
+        title: Program editor
+        show_header_toggle: false
+        entities:
+          - entity: select.irrigation_program_editor_program
+            name: Program
+          - entity: switch.irrigation_program_editor_enabled
+            name: Enabled
+          - entity: select.irrigation_program_editor_day_mode
+            name: Day mode
+          # Weekday switches: only when Day Mode = Weekdays.
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Weekdays
+            row:
+              entity: switch.irrigation_program_editor_mon
+              name: Monday
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Weekdays
+            row:
+              entity: switch.irrigation_program_editor_tue
+              name: Tuesday
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Weekdays
+            row:
+              entity: switch.irrigation_program_editor_wed
+              name: Wednesday
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Weekdays
+            row:
+              entity: switch.irrigation_program_editor_thu
+              name: Thursday
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Weekdays
+            row:
+              entity: switch.irrigation_program_editor_fri
+              name: Friday
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Weekdays
+            row:
+              entity: switch.irrigation_program_editor_sat
+              name: Saturday
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Weekdays
+            row:
+              entity: switch.irrigation_program_editor_sun
+              name: Sunday
+          # Interval numbers: only when Day Mode = Every N days.
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Every N days
+            row:
+              entity: number.irrigation_program_editor_interval_days
+              name: Every N days
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: select.irrigation_program_editor_day_mode
+                state: Every N days
+            row:
+              entity: number.irrigation_program_editor_days_until_first_run
+              name: Days until first run
+          - type: section
+            label: Start times
+          - entity: switch.irrigation_program_editor_start_1_active
+            name: Start 1 active
+          - entity: datetime.irrigation_program_editor_start_1
+            name: Start 1
+          - entity: switch.irrigation_program_editor_start_2_active
+            name: Start 2 active
+          - entity: datetime.irrigation_program_editor_start_2
+            name: Start 2
+          - entity: switch.irrigation_program_editor_start_3_active
+            name: Start 3 active
+          - entity: datetime.irrigation_program_editor_start_3
+            name: Start 3
+          - entity: switch.irrigation_program_editor_start_4_active
+            name: Start 4 active
+          - entity: datetime.irrigation_program_editor_start_4
+            name: Start 4
+          - entity: switch.irrigation_program_editor_cycle_soak
+            name: Cycle and soak
+          - entity: switch.irrigation_program_editor_weather_adjust
+            name: Weather adjust
+          - entity: number.irrigation_program_editor_seasonal_adjust
+            name: Seasonal adjust
+      - type: entities
+        title: Zone minutes (zones up to Zone Count)
+        show_header_toggle: false
+        entities:
+          - entity: number.irrigation_zone_count
+            name: Zone count
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 0
+            row:
+              entity: number.irrigation_program_editor_zone_1_minutes
+              name: Zone 1
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 1
+            row:
+              entity: number.irrigation_program_editor_zone_2_minutes
+              name: Zone 2
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 2
+            row:
+              entity: number.irrigation_program_editor_zone_3_minutes
+              name: Zone 3
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 3
+            row:
+              entity: number.irrigation_program_editor_zone_4_minutes
+              name: Zone 4
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 4
+            row:
+              entity: number.irrigation_program_editor_zone_5_minutes
+              name: Zone 5
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 5
+            row:
+              entity: number.irrigation_program_editor_zone_6_minutes
+              name: Zone 6
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 6
+            row:
+              entity: number.irrigation_program_editor_zone_7_minutes
+              name: Zone 7
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 7
+            row:
+              entity: number.irrigation_program_editor_zone_8_minutes
+              name: Zone 8
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 8
+            row:
+              entity: number.irrigation_program_editor_zone_9_minutes
+              name: Zone 9
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 9
+            row:
+              entity: number.irrigation_program_editor_zone_10_minutes
+              name: Zone 10
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 10
+            row:
+              entity: number.irrigation_program_editor_zone_11_minutes
+              name: Zone 11
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 11
+            row:
+              entity: number.irrigation_program_editor_zone_12_minutes
+              name: Zone 12
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 12
+            row:
+              entity: number.irrigation_program_editor_zone_13_minutes
+              name: Zone 13
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 13
+            row:
+              entity: number.irrigation_program_editor_zone_14_minutes
+              name: Zone 14
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 14
+            row:
+              entity: number.irrigation_program_editor_zone_15_minutes
+              name: Zone 15
+          - type: conditional
+            conditions:
+              - condition: numeric_state
+                entity: number.irrigation_zone_count
+                above: 15
+            row:
+              entity: number.irrigation_program_editor_zone_16_minutes
+              name: Zone 16
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            entity: button.irrigation_program_editor_save
+            name: Save program
+            icon: mdi:content-save
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.irrigation_program_editor_save
+          - type: button
+            entity: button.irrigation_program_editor_revert
+            name: Revert
+            icon: mdi:undo
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.irrigation_program_editor_revert
+  # ---------------------------------------------------------------- zones
+  - title: Zones
+    path: zones
+    icon: mdi:sprinkler
+    cards:
+      # ULTRA CARD: replace with Ultra Card visual-editor export on the user's HA (Task 19 Step 4)
+      - type: entities
+        title: Zone editor
+        show_header_toggle: false
+        entities:
+          - entity: select.irrigation_zone_editor_zone
+            name: Zone
+          - entity: text.irrigation_zone_editor_name
+            name: Name
+          - entity: switch.irrigation_zone_editor_enabled
+            name: Enabled
+          - entity: select.irrigation_zone_editor_head_type
+            name: Head type
+          - entity: select.irrigation_zone_editor_soil
+            name: Soil
+          - entity: select.irrigation_zone_editor_sun
+            name: Sun
+          - entity: select.irrigation_zone_editor_plant
+            name: Plant
+          - entity: select.irrigation_zone_editor_flow_action
+            name: Flow alarm action
+          - entity: select.irrigation_zone_editor_output
+            name: Output
+          - entity: number.irrigation_zone_editor_precipitation
+            name: Precipitation rate
+          - entity: number.irrigation_zone_editor_slope
+            name: Slope
+          - entity: number.irrigation_zone_editor_area
+            name: Area
+          - entity: number.irrigation_zone_editor_max_cycle
+            name: Max cycle
+          - entity: number.irrigation_zone_editor_soak
+            name: Soak
+          - entity: number.irrigation_zone_editor_flow_baseline
+            name: Flow baseline
+          - entity: number.irrigation_zone_editor_high_flow
+            name: High flow limit
+          - entity: number.irrigation_zone_editor_low_flow
+            name: Low flow limit
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            entity: button.irrigation_zone_editor_save
+            name: Save zone
+            icon: mdi:content-save
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.irrigation_zone_editor_save
+          - type: button
+            entity: button.irrigation_zone_editor_revert
+            name: Revert
+            icon: mdi:undo
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.irrigation_zone_editor_revert
+          - type: button
+            entity: button.irrigation_zone_editor_learn_flow
+            name: Learn flow
+            icon: mdi:water-sync
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.irrigation_zone_editor_learn_flow
+          - type: button
+            entity: button.irrigation_zone_editor_test_run
+            name: Test run (3 min)
+            icon: mdi:play
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.irrigation_zone_editor_test_run
+      - type: markdown
+        title: Cycle and soak suggestion
+        content: >-
+          A button cannot choose a zone from another entity, so there is one Suggest button and one
+          Apply button per zone. Suggest calls script.irrigation_suggest_zone with apply false and
+          changes nothing. The script does not store its answer in an entity, so the suggested
+          max cycle and soak minutes appear in the script response (Developer Tools, Actions, run
+          the script with the zone) until the Ultra Card version of this view is built. Apply
+          writes the suggestion to that zone on the controller.
+      - type: grid
+        columns: 4
+        square: false
+        title: Suggest cycle & soak
+        cards:
+          - type: button
+            name: Suggest 1
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 1
+                apply: false
+          - type: button
+            name: Suggest 2
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 2
+                apply: false
+          - type: button
+            name: Suggest 3
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 3
+                apply: false
+          - type: button
+            name: Suggest 4
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 4
+                apply: false
+          - type: button
+            name: Suggest 5
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 5
+                apply: false
+          - type: button
+            name: Suggest 6
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 6
+                apply: false
+          - type: button
+            name: Suggest 7
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 7
+                apply: false
+          - type: button
+            name: Suggest 8
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 8
+                apply: false
+          - type: button
+            name: Suggest 9
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 9
+                apply: false
+          - type: button
+            name: Suggest 10
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 10
+                apply: false
+          - type: button
+            name: Suggest 11
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 11
+                apply: false
+          - type: button
+            name: Suggest 12
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 12
+                apply: false
+          - type: button
+            name: Suggest 13
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 13
+                apply: false
+          - type: button
+            name: Suggest 14
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 14
+                apply: false
+          - type: button
+            name: Suggest 15
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 15
+                apply: false
+          - type: button
+            name: Suggest 16
+            icon: mdi:lightbulb-on-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 16
+                apply: false
+      - type: grid
+        columns: 4
+        square: false
+        title: Apply suggestion
+        cards:
+          - type: button
+            name: Apply 1
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 1
+                apply: true
+          - type: button
+            name: Apply 2
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 2
+                apply: true
+          - type: button
+            name: Apply 3
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 3
+                apply: true
+          - type: button
+            name: Apply 4
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 4
+                apply: true
+          - type: button
+            name: Apply 5
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 5
+                apply: true
+          - type: button
+            name: Apply 6
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 6
+                apply: true
+          - type: button
+            name: Apply 7
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 7
+                apply: true
+          - type: button
+            name: Apply 8
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 8
+                apply: true
+          - type: button
+            name: Apply 9
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 9
+                apply: true
+          - type: button
+            name: Apply 10
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 10
+                apply: true
+          - type: button
+            name: Apply 11
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 11
+                apply: true
+          - type: button
+            name: Apply 12
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 12
+                apply: true
+          - type: button
+            name: Apply 13
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 13
+                apply: true
+          - type: button
+            name: Apply 14
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 14
+                apply: true
+          - type: button
+            name: Apply 15
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 15
+                apply: true
+          - type: button
+            name: Apply 16
+            icon: mdi:check-circle-outline
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_suggest_zone
+              data:
+                zone: 16
+                apply: true
+  # ---------------------------------------------------------------- water
+  - title: Water
+    path: water
+    icon: mdi:water
+    cards:
+      - type: glance
+        title: Water
+        entities:
+          - entity: sensor.irrigation_water_today
+            name: Today
+          - entity: sensor.irrigation_water_month
+            name: Month
+          - entity: sensor.irrigation_water_year
+            name: Year
+      - type: glance
+        title: Cost
+        entities:
+          - entity: sensor.irrigation_cost_today
+            name: Today
+          - entity: sensor.irrigation_cost_month
+            name: Month
+          - entity: sensor.irrigation_cost_year
+            name: Year
+      - type: statistics-graph
+        title: Water per day
+        chart_type: bar
+        period: day
+        days_to_show: 30
+        stat_types: [change]
+        entities:
+          - sensor.irrigation_total_water
+      - type: statistics-graph
+        title: Water per week
+        chart_type: bar
+        period: week
+        days_to_show: 120
+        stat_types: [change]
+        entities:
+          - sensor.irrigation_total_water
+      - type: statistics-graph
+        title: Water per month
+        chart_type: bar
+        period: month
+        days_to_show: 365
+        stat_types: [change]
+        entities:
+          - sensor.irrigation_total_water
+      - type: statistics-graph
+        title: Water per zone this month
+        chart_type: bar
+        period: month
+        days_to_show: 31
+        stat_types: [state]
+        entities:
+          - sensor.irrigation_zone_1_water_month
+          - sensor.irrigation_zone_2_water_month
+          - sensor.irrigation_zone_3_water_month
+          - sensor.irrigation_zone_4_water_month
+          - sensor.irrigation_zone_5_water_month
+          - sensor.irrigation_zone_6_water_month
+          - sensor.irrigation_zone_7_water_month
+          - sensor.irrigation_zone_8_water_month
+          - sensor.irrigation_zone_9_water_month
+          - sensor.irrigation_zone_10_water_month
+          - sensor.irrigation_zone_11_water_month
+          - sensor.irrigation_zone_12_water_month
+          - sensor.irrigation_zone_13_water_month
+          - sensor.irrigation_zone_14_water_month
+          - sensor.irrigation_zone_15_water_month
+          - sensor.irrigation_zone_16_water_month
+      - type: glance
+        title: Zone water this month
+        columns: 4
+        show_name: true
+        entities:
+          - entity: sensor.irrigation_zone_1_water_month
+            name: Zone 1
+          - entity: sensor.irrigation_zone_2_water_month
+            name: Zone 2
+          - entity: sensor.irrigation_zone_3_water_month
+            name: Zone 3
+          - entity: sensor.irrigation_zone_4_water_month
+            name: Zone 4
+          - entity: sensor.irrigation_zone_5_water_month
+            name: Zone 5
+          - entity: sensor.irrigation_zone_6_water_month
+            name: Zone 6
+          - entity: sensor.irrigation_zone_7_water_month
+            name: Zone 7
+          - entity: sensor.irrigation_zone_8_water_month
+            name: Zone 8
+          - entity: sensor.irrigation_zone_9_water_month
+            name: Zone 9
+          - entity: sensor.irrigation_zone_10_water_month
+            name: Zone 10
+          - entity: sensor.irrigation_zone_11_water_month
+            name: Zone 11
+          - entity: sensor.irrigation_zone_12_water_month
+            name: Zone 12
+          - entity: sensor.irrigation_zone_13_water_month
+            name: Zone 13
+          - entity: sensor.irrigation_zone_14_water_month
+            name: Zone 14
+          - entity: sensor.irrigation_zone_15_water_month
+            name: Zone 15
+          - entity: sensor.irrigation_zone_16_water_month
+            name: Zone 16
+  # ---------------------------------------------------------------- settings
+  - title: Settings
+    path: settings
+    icon: mdi:cog
+    cards:
+      - type: entities
+        title: Controller
+        show_header_toggle: false
+        entities:
+          - entity: switch.irrigation_controller_enabled
+            name: Controller enabled
+          - entity: number.irrigation_zone_count
+            name: Zone count
+          - entity: number.irrigation_zone_runtime_limit
+            name: Zone runtime limit
+          - entity: input_text.irrigation_package_version
+            name: Package version
+      - type: entities
+        title: Monthly adjust
+        show_header_toggle: false
+        entities:
+          - entity: number.irrigation_monthly_adjust_jan
+            name: Jan
+          - entity: number.irrigation_monthly_adjust_feb
+            name: Feb
+          - entity: number.irrigation_monthly_adjust_mar
+            name: Mar
+          - entity: number.irrigation_monthly_adjust_apr
+            name: Apr
+          - entity: number.irrigation_monthly_adjust_may
+            name: May
+          - entity: number.irrigation_monthly_adjust_jun
+            name: Jun
+          - entity: number.irrigation_monthly_adjust_jul
+            name: Jul
+          - entity: number.irrigation_monthly_adjust_aug
+            name: Aug
+          - entity: number.irrigation_monthly_adjust_sep
+            name: Sep
+          - entity: number.irrigation_monthly_adjust_oct
+            name: Oct
+          - entity: number.irrigation_monthly_adjust_nov
+            name: Nov
+          - entity: number.irrigation_monthly_adjust_dec
+            name: Dec
+      - type: entities
+        title: Flow
+        show_header_toggle: false
+        entities:
+          - entity: number.irrigation_pulses_per_litre
+            name: Pulses per litre
+          - entity: number.irrigation_leak_threshold
+            name: Leak threshold
+          - entity: number.irrigation_flow_settle_time
+            name: Flow settle time
+      - type: entities
+        title: Rain
+        show_header_toggle: false
+        entities:
+          - entity: select.irrigation_rain_sensor_type
+            name: Rain sensor type
+          - entity: number.irrigation_mm_per_tip
+            name: mm per tip
+          - entity: number.irrigation_rain_skip_threshold
+            name: Rain skip threshold
+          - entity: switch.irrigation_rain_sensor_stops_watering
+            name: Rain sensor stops watering
+      - type: entities
+        title: Hardware
+        show_header_toggle: false
+        entities:
+          - entity: select.irrigation_zone_1_output
+            name: Zone 1 output
+          - entity: select.irrigation_zone_2_output
+            name: Zone 2 output
+          - entity: select.irrigation_zone_3_output
+            name: Zone 3 output
+          - entity: select.irrigation_zone_4_output
+            name: Zone 4 output
+          - entity: select.irrigation_zone_5_output
+            name: Zone 5 output
+          - entity: select.irrigation_zone_6_output
+            name: Zone 6 output
+          - entity: select.irrigation_zone_7_output
+            name: Zone 7 output
+          - entity: select.irrigation_zone_8_output
+            name: Zone 8 output
+          - entity: select.irrigation_zone_9_output
+            name: Zone 9 output
+          - entity: select.irrigation_zone_10_output
+            name: Zone 10 output
+          - entity: select.irrigation_zone_11_output
+            name: Zone 11 output
+          - entity: select.irrigation_zone_12_output
+            name: Zone 12 output
+          - entity: select.irrigation_zone_13_output
+            name: Zone 13 output
+          - entity: select.irrigation_zone_14_output
+            name: Zone 14 output
+          - entity: select.irrigation_zone_15_output
+            name: Zone 15 output
+          - entity: select.irrigation_zone_16_output
+            name: Zone 16 output
+          - entity: select.irrigation_master_output
+            name: Master output
+          - entity: select.irrigation_relay_trigger_level
+            name: Relay trigger level
+          - entity: sensor.irrigation_last_error
+            name: Last error
+      - type: entities
+        title: Buttons
+        show_header_toggle: false
+        entities:
+          - entity: select.irrigation_start_button_short_press
+            name: Start short press
+          - entity: select.irrigation_start_button_long_press
+            name: Start long press
+          - entity: select.irrigation_stop_button_short_press
+            name: Stop short press
+          - entity: select.irrigation_stop_button_long_press
+            name: Stop long press
+          - entity: select.irrigation_button_program
+            name: Button program
+      - type: entities
+        title: Weather & AI
+        show_header_toggle: false
+        entities:
+          - entity: input_text.irrigation_weather_entity
+            name: Weather entity
+          - entity: input_text.irrigation_rain_obs_entity
+            name: Rain observation entity
+          - entity: input_datetime.irrigation_eval_time
+            name: Evaluation time
+          - entity: input_select.irrigation_ai_mode
+            name: AI mode
+          - entity: input_text.irrigation_ai_entity
+            name: AI entity
+          - entity: input_boolean.irrigation_ai_auto_apply
+            name: AI auto-apply
+          - entity: input_number.irrigation_ai_max_pct
+            name: AI maximum adjust
+          - entity: input_number.irrigation_valid_hours
+            name: Adjustment validity
+          - type: section
+            label: Rule thresholds
+          - entity: input_number.irrigation_rain_skip_mm
+            name: Rain skip
+          - entity: input_number.irrigation_rain_prob_pct
+            name: Rain probability threshold
+          - entity: input_number.irrigation_rain_prob_mm
+            name: Rain probability amount
+          - entity: input_number.irrigation_cumulative_days
+            name: Cumulative rain days
+          - entity: input_number.irrigation_cumulative_mm
+            name: Cumulative rain
+          - entity: input_number.irrigation_freeze_c
+            name: Freeze limit
+          - entity: input_boolean.irrigation_wind_enabled
+            name: Wind rule enabled
+          - entity: input_number.irrigation_wind_kmh
+            name: Wind limit
+          - entity: input_number.irrigation_cool_c
+            name: Cool temperature
+          - entity: input_number.irrigation_cool_pct
+            name: Cool adjust
+          - entity: input_number.irrigation_hot_c
+            name: Hot temperature
+          - entity: input_number.irrigation_hot_pct
+            name: Hot adjust
+      - type: entities
+        title: Notifications
+        show_header_toggle: false
+        entities:
+          - entity: input_text.irrigation_notify_targets
+            name: Notify targets
+          - entity: input_boolean.irrigation_notify_run_started
+            name: Run started
+          - entity: input_boolean.irrigation_notify_run_finished
+            name: Run finished
+          - entity: input_boolean.irrigation_notify_skipped
+            name: Run skipped
+          - entity: input_boolean.irrigation_notify_flow_high
+            name: High flow
+          - entity: input_boolean.irrigation_notify_flow_low
+            name: Low flow
+          - entity: input_boolean.irrigation_notify_leak
+            name: Leak
+          - entity: input_boolean.irrigation_notify_max_runtime
+            name: Runtime limit
+          - entity: input_boolean.irrigation_notify_offline
+            name: Controller offline
+          - entity: input_number.irrigation_offline_minutes
+            name: Offline alert delay
+          - entity: input_boolean.irrigation_notify_clock_invalid
+            name: Clock invalid
+          - entity: input_boolean.irrigation_notify_daily_advice
+            name: Daily advice
+          - entity: input_datetime.irrigation_quiet_start
+            name: Quiet hours start
+          - entity: input_datetime.irrigation_quiet_end
+            name: Quiet hours end
+      - type: entities
+        title: Tariff
+        show_header_toggle: false
+        entities:
+          - entity: input_number.irrigation_tariff_per_kl
+            name: Water tariff per kL
+      - type: grid
+        columns: 3
+        square: false
+        title: Backup and defaults
+        cards:
+          - type: button
+            name: Backup config
+            icon: mdi:content-save-cog
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_backup_config
+          - type: button
+            name: Restore config
+            icon: mdi:backup-restore
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_restore_config
+              confirmation:
+                text: Restore the controller programs, zones and settings from the last backup?
+          - type: button
+            name: Reset settings to defaults
+            icon: mdi:restore-alert
+            tap_action:
+              action: perform-action
+              perform_action: script.irrigation_apply_defaults
+              confirmation:
+                text: Reset every dashboard setting to its default value?
