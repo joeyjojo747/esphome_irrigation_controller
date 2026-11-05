@@ -261,6 +261,8 @@ script:
               data: "{{ repeat.item }}"
       - action: script.irrigation_backup_config
 
+# The record-list logic is written twice (state and attribute) because `this` is
+# only available inside the state/attribute templates, not in `variables`.
 template:
   - triggers:
       - trigger: event
@@ -269,30 +271,39 @@ template:
         event_type: irrigation_skipped
       - trigger: event
         event_type: irrigation_replayed_record
-    variables:
-      records: >-
-        {% set cutoff = now().timestamp() - 7 * 86400 %}
-        {% set e = trigger.event.data %}
-        {% set rec = {'seq': e.seq | int(0), 'inst': e.inst | int(0), 'p': e.p | int(0),
-                      'z': e.z | int(0), 'ts': e.ts | int(0), 'plan': e.plan | int(0),
-                      'act': e.act | int(0), 'l': e.l | float(0), 'r': e.r | string} %}
-        {% set ns = namespace(items=[]) %}
-        {% for r in this.attributes.records | default([], true) %}
-          {% if r.ts >= cutoff and not (r.ts == rec.ts and r.seq == rec.seq) %}
-            {% set ns.items = ns.items + [r] %}
-          {% endif %}
-        {% endfor %}
-        {% if rec.ts >= cutoff %}
-          {% set ns.items = ns.items + [rec] %}
-        {% endif %}
-        {{ (ns.items | sort(attribute='ts'))[-300:] }}
     sensor:
       - name: Irrigation run history
         unique_id: irrigation_run_history
         icon: mdi:history
-        state: "{{ records | count }}"
+        state: >-
+          {% set cutoff = now().timestamp() - 7 * 86400 %}
+          {% set e = trigger.event.data %}
+          {% set rec = {'seq': e.seq | int(0), 'ts': e.ts | int(0)} %}
+          {% set ns = namespace(n=0) %}
+          {% for r in this.attributes.records | default([], true) %}
+            {% if r.ts >= cutoff and not (r.ts == rec.ts and r.seq == rec.seq) %}
+              {% set ns.n = ns.n + 1 %}
+            {% endif %}
+          {% endfor %}
+          {% if rec.ts >= cutoff %}{% set ns.n = ns.n + 1 %}{% endif %}
+          {{ [ns.n, 300] | min }}
         attributes:
-          records: "{{ records }}"
+          records: >-
+            {% set cutoff = now().timestamp() - 7 * 86400 %}
+            {% set e = trigger.event.data %}
+            {% set rec = {'seq': e.seq | int(0), 'inst': e.inst | int(0), 'p': e.p | int(0),
+                          'z': e.z | int(0), 'ts': e.ts | int(0), 'plan': e.plan | int(0),
+                          'act': e.act | int(0), 'l': e.l | float(0), 'r': e.r | string} %}
+            {% set ns = namespace(items=[]) %}
+            {% for r in this.attributes.records | default([], true) %}
+              {% if r.ts >= cutoff and not (r.ts == rec.ts and r.seq == rec.seq) %}
+                {% set ns.items = ns.items + [r] %}
+              {% endif %}
+            {% endfor %}
+            {% if rec.ts >= cutoff %}
+              {% set ns.items = ns.items + [rec] %}
+            {% endif %}
+            {{ (ns.items | sort(attribute='ts'))[-300:] }}
 
   - triggers:
       - trigger: event

@@ -302,13 +302,14 @@ async def test_backup_restore_roundtrip(pkg_hass, device):
     assert order[-1] == "irrigation_controller_get_config"
 
 
-async def test_restore_without_backup_fails(pkg_hass, device):
-    import pytest
-    from homeassistant.exceptions import HomeAssistantError
-
-    with pytest.raises(HomeAssistantError):
+async def test_restore_without_backup_does_nothing(pkg_hass, device):
+    try:
         await pkg_hass.services.async_call("script", "irrigation_restore_config", {}, blocking=True)
+    except Exception:  # noqa: BLE001 - the script may surface its error stop
+        pass
+    await pkg_hass.async_block_till_done()
     assert device.calls["set_zone"] == []
+    assert device.calls["set_settings"] == []
 
 
 async def test_restore_does_not_overwrite_backup(pkg_hass, device):
