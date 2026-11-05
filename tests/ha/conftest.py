@@ -18,6 +18,8 @@ pytest_plugins = "pytest_homeassistant_custom_component"
 DOMAINS = ("input_boolean", "input_datetime", "input_number", "input_select",
            "input_text", "template", "sensor", "utility_meter", "script", "automation")
 CORE_KEYS = ("homeassistant",)
+# Domains packages may declare that the test HA deliberately does not set up.
+NOT_SET_UP = ("recorder",)
 
 RESPONSE_ACTIONS = ("get_plan", "get_run_log", "get_config")
 VOID_ACTIONS = ("run_zone", "run_program", "stop_all", "rain_delay",
@@ -38,7 +40,7 @@ async def pkg_hass(hass: HomeAssistant) -> HomeAssistant:
         merged = await merged
     if isinstance(merged, dict):
         config = merged
-    unknown = set(config) - set(DOMAINS) - set(CORE_KEYS)
+    unknown = set(config) - set(DOMAINS) - set(CORE_KEYS) - set(NOT_SET_UP)
     assert not unknown, f"package domains not set up by pkg_hass (add to DOMAINS): {sorted(unknown)}"
     for domain in DOMAINS:
         if domain in config:
