@@ -314,4 +314,5 @@ async def test_numeric_summary_stays_string(pkg_hass, mocks):
     await advise(hass)
     await settle(hass)
     assert events[0].data["advice"]["summary"] == "12345"
-    assert hass.states.get("sensor.irrigation_advice").attributes["summary"] == "12345"
+    # Template-entity attributes are always type-parsed by HA; the state stays a string.
+    assert hass.states.get("sensor.irrigation_advice").state == "12345"
