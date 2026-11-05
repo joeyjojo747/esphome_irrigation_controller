@@ -30,6 +30,11 @@ struct BoardPins {
 PinError validate_assignment(uint8_t slot, int16_t code, const int16_t (&assigned)[kZones + 1], const BoardPins &b);
 const char *pin_error_text(PinError e);
 
+// Whether a slot may be switched on. A zone with no output never starts, and the
+// master never energises while the active zone (-1 = none) has no output, so a
+// pump or master valve cannot run against closed valves. Off is always allowed.
+bool output_on_allowed(uint8_t slot, int active_zone, const int16_t (&assigned)[kZones + 1]);
+
 enum class Pull : uint8_t { DOWN, UP };
 // Released GPIO: input with pull to the OFF level (active-high: DOWN, active-low: UP).
 Pull park_pull(bool relay_active_high);

@@ -175,6 +175,8 @@ button:
           core.rain_tip();
           core.set_rain_switch(false);
           core.button_press(true, false);
+          core.stop_button_down();
+          core.button_press(false, true);
           core.stop_all();
           ESP_LOGI("test", "%s %s %s", core.plan_json(7).c_str(), core.runlog_json(0).c_str(),
                    core.config_json().c_str());

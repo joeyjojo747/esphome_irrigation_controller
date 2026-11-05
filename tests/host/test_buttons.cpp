@@ -35,6 +35,49 @@ TEST_CASE("none maps to none") {
   }
 }
 
+TEST_CASE("stop press classification") {
+  CHECK(classify_press(50) == PressKind::SHORT);
+  CHECK(classify_press(1000) == PressKind::SHORT);
+  CHECK(classify_press(1500) == PressKind::OTHER);
+  CHECK(classify_press(1999) == PressKind::OTHER);
+  CHECK(classify_press(2000) == PressKind::LONG);
+  CHECK(classify_press(10000) == PressKind::LONG);
+}
+
+TEST_CASE("stop while watering or queued always stops, at any length") {
+  const ButtonFn fns[] = {ButtonFn::NONE, ButtonFn::RUN_PROGRAM, ButtonFn::STOP_ALL, ButtonFn::NEXT_ZONE,
+                          ButtonFn::RAIN_DELAY};
+  for (int m = 0; m < 4; m++) {
+    ButtonState s{(m & 1) != 0, true, (m & 2) != 0};  // busy
+    for (ButtonFn sf : fns)
+      for (ButtonFn lf : fns) {
+        CHECK(resolve_stop_press(sf, lf, PressKind::DOWN, s) == ButtonCmd::STOP_ALL);
+        CHECK(resolve_stop_press(sf, lf, classify_press(300), s) == ButtonCmd::STOP_ALL);   // short
+        CHECK(resolve_stop_press(sf, lf, classify_press(3000), s) == ButtonCmd::STOP_ALL);  // long
+        CHECK(resolve_stop_press(sf, lf, classify_press(1500), s) == ButtonCmd::STOP_ALL);  // between
+      }
+  }
+  // The default long function (rain delay) does not replace the stop while watering.
+  CHECK(resolve_stop_press(ButtonFn::STOP_ALL, ButtonFn::RAIN_DELAY, PressKind::LONG, {true, true, false}) ==
+        ButtonCmd::STOP_ALL);
+}
+
+TEST_CASE("idle stop press runs the configured function") {
+  const ButtonState idle{true, false, false};
+  const ButtonState idle_delay{true, false, true};
+  CHECK(resolve_stop_press(ButtonFn::STOP_ALL, ButtonFn::RAIN_DELAY, PressKind::LONG, idle) ==
+        ButtonCmd::SET_RAIN_DELAY_24H);
+  CHECK(resolve_stop_press(ButtonFn::STOP_ALL, ButtonFn::RAIN_DELAY, PressKind::LONG, idle_delay) ==
+        ButtonCmd::CLEAR_RAIN_DELAY);
+  CHECK(resolve_stop_press(ButtonFn::STOP_ALL, ButtonFn::NONE, PressKind::LONG, idle) == ButtonCmd::NONE);
+  CHECK(resolve_stop_press(ButtonFn::STOP_ALL, ButtonFn::RAIN_DELAY, PressKind::SHORT, idle) == ButtonCmd::STOP_ALL);
+  CHECK(resolve_stop_press(ButtonFn::RAIN_DELAY, ButtonFn::STOP_ALL, PressKind::SHORT, idle) ==
+        ButtonCmd::SET_RAIN_DELAY_24H);
+  // Idle, the press itself and an in-between hold do nothing.
+  CHECK(resolve_stop_press(ButtonFn::STOP_ALL, ButtonFn::RAIN_DELAY, PressKind::DOWN, idle) == ButtonCmd::NONE);
+  CHECK(resolve_stop_press(ButtonFn::STOP_ALL, ButtonFn::RAIN_DELAY, PressKind::OTHER, idle) == ButtonCmd::NONE);
+}
+
 TEST_CASE("led priority") {
   CHECK(led_mode({true, true, false}) == LedMode::FAST_BLINK);
   CHECK(led_mode({true, true, true}) == LedMode::ON);

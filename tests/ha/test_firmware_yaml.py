@@ -119,6 +119,15 @@ def test_buttons_local():
         assert "homeassistant." not in text
 
 
+def test_stop_button_acts_at_press():
+    # Stop is always honoured: the press itself (not the release timing) stops watering.
+    sensors = load(PKG / "sensors.yaml")
+    stop = next(bs for bs in as_list(sensors.get("binary_sensor")) if bs.get("id") == "stop_button")
+    assert "id(irr).stop_button_down();" in yaml.dump(stop.get("on_press"))
+    start = next(bs for bs in as_list(sensors.get("binary_sensor")) if bs.get("id") == "start_button")
+    assert "stop_button_down" not in yaml.dump(start)
+
+
 # The only secret-looking literal allowed in tracked files: the dummy in secrets.yaml.example.
 DUMMY_API_KEY = "ZHVtbXkta2V5LWZvci1jaS1ub3QtYS1zZWNyZXQtMDA="
 

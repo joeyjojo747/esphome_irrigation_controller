@@ -18,6 +18,26 @@ ButtonCmd resolve_button(ButtonFn fn, const ButtonState& s) {
   }
 }
 
+PressKind classify_press(uint32_t held_ms) {
+  if (held_ms <= 1000) return PressKind::SHORT;
+  if (held_ms >= 2000) return PressKind::LONG;
+  return PressKind::OTHER;
+}
+
+ButtonCmd resolve_stop_press(ButtonFn short_fn, ButtonFn long_fn, PressKind kind, const ButtonState& s) {
+  if (s.busy) return ButtonCmd::STOP_ALL;
+  switch (kind) {
+    case PressKind::SHORT:
+      return resolve_button(short_fn, s);
+    case PressKind::LONG:
+      return resolve_button(long_fn, s);
+    case PressKind::DOWN:
+    case PressKind::OTHER:
+    default:
+      return ButtonCmd::NONE;
+  }
+}
+
 LedMode led_mode(const LedState& s) {
   if (!s.clock_valid) return LedMode::FAST_BLINK;
   if (s.watering) return LedMode::ON;

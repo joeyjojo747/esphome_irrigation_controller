@@ -99,7 +99,7 @@ Build a Home Assistant (HA) irrigation system on a DFRobot FireBeetle 2 ESP32-C6
 | AI | — | Analysis and suggestions; optional bounded % |
 | Calendar / reports | Provides plan projection + run log | Renders calendar, usage, cost |
 
-**Offline behaviour.** If HA is unreachable, the ESP keeps running its programs. The last weather % stays valid until its `valid_until` (default 30 h after it was pushed). After that the multiplier falls back to the program and monthly tables. The rain sensor, flow alarms and the max-runtime failsafe all stay active. Run records buffer in RAM (48) and replay when HA reconnects. `api.reboot_timeout` and `wifi.reboot_timeout` are set to `0s`, so a missing HA never reboots the controller mid-watering. The ESP web server (v3) gives local manual control and the editors without HA.
+**Offline behaviour.** If HA is unreachable, the ESP keeps running its programs. The last weather % stays valid until its `valid_until` (default 30 h after it was pushed). After that the multiplier falls back to the program and monthly tables. The rain sensor, flow alarms and the max-runtime failsafe all stay active. Run records buffer in RAM (48) and replay when HA reconnects or restarts. `api.reboot_timeout` and `wifi.reboot_timeout` are set to `0s`, so a missing HA never reboots the controller mid-watering. The ESP web server (v3) gives local manual control and the editors without HA.
 
 **Clock.** Time comes from HA time and SNTP, with an optional DS3231 on I²C that restores time after a power cut with no network. Scheduled starts are suppressed while the clock is invalid; manual runs still work. When the clock first becomes valid, past starts are **not** caught up.
 
@@ -135,7 +135,7 @@ ESPyRain stores a raw pin number per station and drives it with ESP-IDF `gpio_se
 - **Applying a change.** Watering stops first. The old pin is *parked* as an input pulled to the relay's off level. This matters because `gpio_reset_pin` enables a pull-up, which would switch an active-high KS0011 on. The new pin is then configured at the off level, and the result is saved to NVS.
 - **Relay trigger level** (Active high, the default for the KS0011, or Active low) is set in HA. Changing it re-drives every output.
 - **Boot.** Outputs are driven off at `setup_priority::HARDWARE`, from NVS, before the scheduler or the sprinkler start.
-- **Unassigned zones.** A zone set to `None` is skipped by programs. The **Zone Count** (1–16) limits the zones shown and used.
+- **Unassigned zones.** A zone set to `None` is skipped by programs, and any other start of it is refused, so the master valve or pump never runs without a zone valve: `run_zone` / Learn Flow reject it, and the HA `Zone N` switch is vetoed at the output (the master is held off and watering stops, with a `no_output` alert). Either way `Last Error` shows "Zone N has no output". The **Zone Count** (1–16) limits the zones shown and used.
 - **Compile-time pins.** Sensor pins (flow, which needs PCNT, plus rain, the Start/Stop buttons, the status LED and I²C) stay compile-time substitutions, because the ESPHome sensor components bind pins at build time.
 - **More than 6 zones.** Fitting an MCP23017 and including `expander.yaml` needs a reflash, since the hardware itself changes. After that, all 16 channels can be assigned from HA.
 
@@ -156,8 +156,8 @@ ESPyRain stores a raw pin number per station and drives it with ESP-IDF `gpio_se
   | Start | Run program | Next zone |
   | Stop | Stop all | Rain delay 24 h |
 
-- **Stop is always honoured.** `Stop all` works even when the controller is disabled or the clock is not set. `Run program` from a button respects `Controller Enabled` but, like a manual run from HA, ignores rain and weather skips.
-- **Logging.** Button runs are logged like any other run (program runs as their program, manual steps as manual), so they reach the calendar and run history when HA reconnects. Every press also fires `button` events (`{"btn":"start|stop","press":"short|long","fn":N,"cmd":N}`, where `cmd` 0 means the press was ignored) for the HA log.
+- **Stop is always honoured.** While anything is watering or queued, every Stop press, of any length, runs `Stop all` as soon as it is pressed (`on_press`), whatever the Stop functions are set to. The short and long functions above apply only when idle, so a long press sets or clears the rain delay only when nothing is watering. `Stop all` works even when the controller is disabled or the clock is not set. `Run program` from a button respects `Controller Enabled` but, like a manual run from HA, ignores rain and weather skips.
+- **Logging.** Button runs are logged like any other run (program runs as their program, manual steps as manual), so they reach the calendar and run history when HA reconnects. Every press also fires `button` events (`{"btn":"start|stop","press":"short|long|down","fn":N,"cmd":N}`, where `down` is a Stop press acted on at press while watering and `cmd` 0 means the press was ignored) for the HA log.
 - **Status LED** (optional package `status_led.yaml`):
   - off when idle
   - on while watering

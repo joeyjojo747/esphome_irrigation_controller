@@ -211,7 +211,12 @@ void IrrigationCore::dump_config() {
   }
 }
 
+void IrrigationCore::on_shutdown() {
+  if (this->ready_) this->save_litres_();
+}
+
 void IrrigationCore::loop() {
+  if (this->refuse_zone_ >= 0) this->refuse_unassigned_start_();
   this->flush_events_();
   const uint32_t now_ms = millis();
   const uint32_t dt = now_ms - this->last_tick_ms_;
@@ -685,12 +690,38 @@ void IrrigationCore::write_output(uint8_t slot, bool on) {
     return;
   }
   const int16_t code = this->applied_[slot];
-  if (code == kNoOutput) {
-    // Off on an unassigned slot is the normal boot/stop path; only warn when asked to switch on.
-    if (on) ESP_LOGW(TAG, "%s has no output assigned", this->slot_name_(slot).c_str());
-    return;
+  if (on) {
+    // A zone with no output must not start (HA Zone N switch, API, button or
+    // schedule): the master would otherwise run with no zone valve open.
+    int az = -1;
+    auto av = this->sprinkler_->active_valve();
+    if (av.has_value() && *av < (size_t) kZones) az = static_cast<int>(*av);
+    if (!irrigation::output_on_allowed(slot, az, this->applied_)) {
+      const int16_t z = slot < kZones ? slot : static_cast<int16_t>(az);
+      ESP_LOGW(TAG, "%s refused: Zone %d has no output", this->slot_name_(slot).c_str(), z + 1);
+      if (code != kNoOutput) this->hw_write_(code, !this->applied_active_high_);  // keep it off
+      this->refuse_zone_ = z;  // stopped from loop(), outside the sprinkler's switch call
+      return;
+    }
   }
+  if (code == kNoOutput) return;  // off on an unassigned slot is the normal boot/stop path
   this->hw_write_(code, on == this->applied_active_high_);
+}
+
+void IrrigationCore::refuse_unassigned_start_() {
+  const int16_t z = this->refuse_zone_;
+  this->refuse_zone_ = -1;
+  if (z < 0 || z >= kZones) return;
+  this->last_error_ = "Zone " + std::to_string(z + 1) + " has no output";
+  ESP_LOGW(TAG, "%s: start refused, watering stopped", this->last_error_.c_str());
+  const auto rz = this->runner_.active_zone();
+  if (rz.has_value() && *rz == z) {
+    // Logged as stopped; the Runner goes on with its next step.
+    this->runner_.stop_zone_with(Result::STOPPED, this->uptime_s_());
+  } else {
+    this->sprinkler_->shutdown(true);  // a valve switched on from HA (not the Runner's)
+  }
+  this->alert_("no_output", static_cast<uint8_t>(z), 0.0f, 0.0f);
 }
 
 void IrrigationCore::hw_configure_off_(int16_t code) {
@@ -801,7 +832,8 @@ void IrrigationCore::run_zone(uint8_t zone, uint32_t seconds) {
     return;
   }
   if (this->applied_[zone] == kNoOutput) {
-    ESP_LOGW(TAG, "run_zone: %s has no output assigned", this->zone_name_(zone).c_str());
+    this->last_error_ = "Zone " + std::to_string(zone + 1) + " has no output";
+    ESP_LOGW(TAG, "run_zone: %s refused (%s)", this->zone_name_(zone).c_str(), this->last_error_.c_str());
     return;
   }
   if (seconds == 0) {
@@ -929,10 +961,38 @@ float IrrigationCore::rain_mm_24h() const {
 
 void IrrigationCore::button_press(bool is_start, bool is_long) {
   const auto &s = this->settings_;
-  const irrigation::ButtonFn fn =
-      is_start ? (is_long ? s.start_long_fn : s.start_short_fn) : (is_long ? s.stop_long_fn : s.stop_short_fn);
   const irrigation::ButtonState bs{s.controller_enabled, this->watering_(), this->rain_delay_active()};
-  const irrigation::ButtonCmd cmd = irrigation::resolve_button(fn, bs);
+  irrigation::ButtonFn fn = irrigation::ButtonFn::NONE;
+  irrigation::ButtonCmd cmd = irrigation::ButtonCmd::NONE;
+  if (is_start) {
+    fn = is_long ? s.start_long_fn : s.start_short_fn;
+    cmd = irrigation::resolve_button(fn, bs);
+  } else {
+    fn = is_long ? s.stop_long_fn : s.stop_short_fn;
+    // Already acted on at press (stop_button_down): a long hold must not then
+    // toggle the rain delay, and the release of a short press must not repeat it.
+    if (this->stop_press_consumed_) return;
+    cmd = irrigation::resolve_stop_press(s.stop_short_fn, s.stop_long_fn,
+                                         is_long ? irrigation::PressKind::LONG : irrigation::PressKind::SHORT, bs);
+  }
+  this->run_button_cmd_(cmd);
+  this->emit_button_(is_start, is_long ? "long" : "short", fn, cmd);
+}
+
+void IrrigationCore::stop_button_down() {
+  const auto &s = this->settings_;
+  const irrigation::ButtonState bs{s.controller_enabled, this->watering_(), this->rain_delay_active()};
+  const irrigation::ButtonCmd cmd =
+      irrigation::resolve_stop_press(s.stop_short_fn, s.stop_long_fn, irrigation::PressKind::DOWN, bs);
+  this->stop_press_consumed_ = cmd != irrigation::ButtonCmd::NONE;
+  if (!this->stop_press_consumed_) return;  // idle: the short/long timing decides on release / hold
+  ESP_LOGI(TAG, "Stop button pressed while watering: stopping all");
+  this->run_button_cmd_(cmd);
+  this->emit_button_(false, "down", irrigation::ButtonFn::STOP_ALL, cmd);
+}
+
+void IrrigationCore::run_button_cmd_(irrigation::ButtonCmd cmd) {
+  const auto &s = this->settings_;
   switch (cmd) {
     case irrigation::ButtonCmd::RUN_PROGRAM:
       this->run_program(s.button_program);
@@ -954,9 +1014,13 @@ void IrrigationCore::button_press(bool is_start, bool is_long) {
       break;
   }
   if (cmd != irrigation::ButtonCmd::NONE) this->led_ack_until_ms_ = millis() + irrigation::kLedAckMs;
+}
+
+void IrrigationCore::emit_button_(bool is_start, const char *press, irrigation::ButtonFn fn,
+                                  irrigation::ButtonCmd cmd) {
   char buf[96];
   snprintf(buf, sizeof(buf), "{\"btn\":\"%s\",\"press\":\"%s\",\"fn\":%u,\"cmd\":%u}", is_start ? "start" : "stop",
-           is_long ? "long" : "short", static_cast<unsigned>(fn), static_cast<unsigned>(cmd));
+           press, static_cast<unsigned>(fn), static_cast<unsigned>(cmd));
   this->emit_("button", buf);
 }
 

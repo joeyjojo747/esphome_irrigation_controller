@@ -84,6 +84,11 @@ binary_sensor:
       inverted: true
     filters:
       - delayed_on_off: 50ms
+    # Stop is always honoured: while anything is watering or queued, any press
+    # (any length) stops everything at press. Idle, the short / long timing below
+    # runs the configured function (long = rain delay only when idle).
+    on_press:
+      - lambda: 'id(irr).stop_button_down();'
     on_multi_click:
       - timing:
           - ON for at most 1s

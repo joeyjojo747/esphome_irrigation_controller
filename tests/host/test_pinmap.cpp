@@ -77,3 +77,19 @@ TEST_CASE("pinmap error text and park level") {
   CHECK(park_pull(true) == Pull::DOWN);
   CHECK(park_pull(false) == Pull::UP);
 }
+
+TEST_CASE("a zone with no output never starts and never energises the master") {
+  int16_t a[kZones + 1];
+  clear(a);
+  a[0] = 1;    // zone 1 -> GPIO 1
+  a[kZones] = 21;  // master -> GPIO 21
+  CHECK(output_on_allowed(0, 0, a));
+  CHECK_FALSE(output_on_allowed(8, 8, a));  // zone 9, no output
+  // Master: allowed for an assigned zone, refused for an unassigned active zone.
+  CHECK(output_on_allowed(kZones, 0, a));
+  CHECK_FALSE(output_on_allowed(kZones, 8, a));
+  CHECK_FALSE(output_on_allowed(kZones, 15, a));
+  // No active zone known: the master is not vetoed here.
+  CHECK(output_on_allowed(kZones, -1, a));
+  CHECK_FALSE(output_on_allowed(kZones + 1, 0, a));  // invalid slot
+}

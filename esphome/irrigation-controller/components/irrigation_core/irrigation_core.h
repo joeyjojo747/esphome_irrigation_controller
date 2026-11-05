@@ -149,6 +149,8 @@ class IrrigationCore : public Component {
   void setup() override;
   void loop() override;
   void dump_config() override;
+  // Saves the litre totals so a clean reboot or OTA does not lower the counters.
+  void on_shutdown() override;
   float get_setup_priority() const override { return setup_priority::HARDWARE; }
 
   // ---- program / zone / settings access ----
@@ -190,6 +192,8 @@ class IrrigationCore : public Component {
   bool rain_delay_active() const;
   void clear_rain_delay();
   void button_press(bool is_start, bool is_long);
+  // Stop button pressed (before its length is known): stops at once while watering or queued.
+  void stop_button_down();
   bool status_led_level() const;
 
   // ---- API actions ----
@@ -294,6 +298,9 @@ class IrrigationCore : public Component {
   std::string slot_name_(uint8_t slot) const;
   void notify_output_changed_(uint8_t slot);
   bool watering_() const;
+  void run_button_cmd_(irrigation::ButtonCmd cmd);
+  void emit_button_(bool is_start, const char *press, irrigation::ButtonFn fn, irrigation::ButtonCmd cmd);
+  void refuse_unassigned_start_();
 
   std::string program_name_(uint8_t p) const;
   std::string zone_name_(uint8_t z) const;
@@ -359,6 +366,10 @@ class IrrigationCore : public Component {
   std::string last_error_;
   uint32_t last_tick_ms_{0};
   uint32_t led_ack_until_ms_{0};
+  // The Stop press in progress was already acted on at press (STOP_ALL while watering).
+  bool stop_press_consumed_{false};
+  // Zone whose start was refused because it has no output (-1 = none); handled in loop().
+  int16_t refuse_zone_{-1};
   bool rain_switch_raw_{false};
   bool clock_alert_sent_{false};
   bool leak_active_{false};

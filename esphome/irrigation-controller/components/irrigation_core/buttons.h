@@ -14,6 +14,17 @@ struct ButtonState {
 
 ButtonCmd resolve_button(ButtonFn fn, const ButtonState& s);
 
+// A Stop press: DOWN is the moment it is pressed (length not yet known); SHORT is
+// released within 1 s, LONG is held 2 s; OTHER is anything in between.
+enum class PressKind : uint8_t { DOWN, SHORT, LONG, OTHER };
+PressKind classify_press(uint32_t held_ms);
+
+// Stop is always honoured: while anything is watering or queued (s.busy), every
+// Stop press, of any length, is STOP_ALL and is acted on at DOWN. Idle, SHORT and
+// LONG run the configured functions (so a long press sets a rain delay only when
+// idle), and DOWN / OTHER do nothing.
+ButtonCmd resolve_stop_press(ButtonFn short_fn, ButtonFn long_fn, PressKind kind, const ButtonState& s);
+
 enum class LedMode : uint8_t { OFF, ON, SLOW_BLINK, FAST_BLINK };
 
 struct LedState {

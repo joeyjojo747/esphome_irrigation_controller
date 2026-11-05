@@ -99,6 +99,14 @@ const char *pin_error_text(PinError e) {
   }
 }
 
+bool output_on_allowed(uint8_t slot, int active_zone, const int16_t (&assigned)[kZones + 1]) {
+  if (slot < kZones) return assigned[slot] != kNoOutput;
+  if (slot > kZones) return false;
+  // Master: refused while the active zone has no valve output.
+  if (active_zone >= 0 && active_zone < kZones) return assigned[active_zone] != kNoOutput;
+  return true;
+}
+
 Pull park_pull(bool relay_active_high) { return relay_active_high ? Pull::DOWN : Pull::UP; }
 
 }  // namespace irrigation
