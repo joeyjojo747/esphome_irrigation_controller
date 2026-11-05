@@ -1,0 +1,205 @@
+# Irrigation controller: AI advisor. Works with any installed AI integration:
+#   AI Task            -> ai_task.generate_data on the entity in input_text.irrigation_ai_entity
+#   Conversation agent -> conversation.process with the agent id in the same helper
+#   Off                -> no call; rule-based weather adjustment still works.
+# The weather package calls script.irrigation_ai_advice when it exists.
+# Entity ids depend on the device name "irrigation-controller": do not change it.
+
+script:
+  irrigation_ai_advice:
+    alias: Irrigation AI advice
+    mode: parallel
+    fields:
+      decision:
+        description: The rule decision from script.irrigation_evaluate_weather.
+      forecast:
+        description: List of daily forecast dicts.
+    sequence:
+      - variables:
+          ai_mode: "{{ states('input_select.irrigation_ai_mode') }}"
+          ai_entity: "{{ states('input_text.irrigation_ai_entity') }}"
+          auto_apply: "{{ is_state('input_boolean.irrigation_ai_auto_apply', 'on') }}"
+          ai_max: "{{ states('input_number.irrigation_ai_max_pct') | float(150) }}"
+          dec: "{{ decision if decision is defined and decision is mapping else {} }}"
+          fc_list: "{{ forecast if forecast is defined and forecast is list else [] }}"
+          cfg: "{{ state_attr('sensor.irrigation_config_backup', 'config') }}"
+          recs: "{{ state_attr('sensor.irrigation_run_history', 'records') }}"
+          head_names: ["spray", "rotor", "rotator", "drip", "bubbler"]
+          soil_names: ["sand", "loamy sand", "sandy loam", "loam", "clay loam", "clay"]
+          sun_names: ["full sun", "part shade", "shade"]
+          plant_names: ["lawn", "shrubs", "trees", "garden beds", "natives", "vegetables"]
+      - variables:
+          # Run-history zone index z is 0-based; config zones are numbered from 1.
+          zone_text: >-
+            {% set ns = namespace(lines=[]) %}
+            {% set zs = cfg.zones if cfg is mapping and cfg.zones is list else [] %}
+            {% set rs = recs if recs is list else [] %}
+            {% for z in zs if z.enabled | default(false) %}
+              {% set zr = rs | selectattr('z', 'eq', (z.zone | int(0)) - 1) | list %}
+              {% set ns.lines = ns.lines + [
+                '- ' ~ z.name ~ ': ' ~ (head_names[z.head | int(0)] | default('?')) ~ ' head'
+                ~ ', soil ' ~ (soil_names[z.soil | int(0)] | default('?'))
+                ~ ', ' ~ (sun_names[z.sun | int(0)] | default('?'))
+                ~ ', ' ~ (plant_names[z.plant | int(0)] | default('?'))
+                ~ ', ' ~ z.area | default(0) ~ ' m2'
+                ~ ', ' ~ z.precip | default(0) ~ ' mm/h'
+                ~ '; last 7 days: ' ~ ((zr | sum(attribute='l')) | round(1)) ~ ' L, '
+                ~ (((zr | sum(attribute='act')) / 60) | round(0) | int) ~ ' min'] %}
+            {% endfor %}
+            {{ ns.lines | join('\n') if ns.lines else '(no zone configuration available)' }}
+          forecast_text: >-
+            {% set ns = namespace(lines=[]) %}
+            {% for d in fc_list[:5] if d is mapping %}
+              {% set ns.lines = ns.lines + [
+                d.datetime | string | truncate(10, true, '', 0) ~ ': min ' ~ d.templow | default('?')
+                ~ ' C, max ' ~ d.temperature | default('?') ~ ' C, rain ' ~ d.precipitation | default('?')
+                ~ ' mm, chance ' ~ d.precipitation_probability | default('?')
+                ~ '%, wind ' ~ d.wind_speed | default('?') ~ ' km/h'] %}
+            {% endfor %}
+            {{ ns.lines | join('\n') if ns.lines else '(no forecast available)' }}
+          rule_text: >-
+            {% if dec.skip | default(false) %}Rule-based decision: SKIP watering ({{ dec.reason }}).{% else %}Rule-based decision: run at {{ dec.pct | default('?') }}% of normal.{% endif %}
+      - variables:
+          prompt: >-
+            Garden irrigation zones:
+            {{ zone_text }}
+
+            5-day forecast:
+            {{ forecast_text }}
+
+            {{ rule_text }}
+
+            Return a summary of at most 80 words for a home gardener in Australia, a recommended run-time percentage, suggestions per program, and warnings. Do not recommend watering during a rule-based skip.
+          raw: "{{ none }}"
+      - choose:
+          - conditions: "{{ ai_mode == 'AI Task' }}"
+            sequence:
+              - action: ai_task.generate_data
+                data:
+                  entity_id: "{{ ai_entity }}"
+                  task_name: irrigation_daily_advice
+                  instructions: "{{ prompt }}"
+                  structure:
+                    summary:
+                      description: Summary of at most 80 words for the gardener
+                      required: true
+                      selector:
+                        text: {}
+                    recommended_pct:
+                      description: Recommended run-time percentage
+                      selector:
+                        number:
+                          min: 0
+                          max: 200
+                    program_suggestions:
+                      description: One suggestion per program
+                      selector:
+                        object:
+                          multiple: true
+                          label_field: program
+                          fields:
+                            program:
+                              selector:
+                                text: {}
+                            suggestion:
+                              selector:
+                                text: {}
+                    warnings:
+                      description: Warnings for the gardener
+                      selector:
+                        text:
+                          multiple: true
+                response_variable: task_res
+                continue_on_error: true
+              - variables:
+                  raw: >-
+                    {{ task_res.data if task_res is defined and task_res is mapping
+                       and task_res.data is mapping else none }}
+          - conditions: "{{ ai_mode == 'Conversation agent' }}"
+            sequence:
+              - action: conversation.process
+                data:
+                  agent_id: "{{ ai_entity }}"
+                  text: >-
+                    {{ prompt }}
+                    Reply with only a JSON object with keys summary, recommended_pct, program_suggestions, warnings.
+                response_variable: conv_res
+                continue_on_error: true
+              - variables:
+                  speech: >-
+                    {{ conv_res.response.speech.plain.speech
+                       if conv_res is defined and conv_res is mapping and conv_res.response is mapping
+                          and conv_res.response.speech is mapping and conv_res.response.speech.plain is mapping
+                       else '' }}
+              - variables:
+                  # Tolerate a ```json fenced reply.
+                  json_text: >-
+                    {{ speech | string | trim | regex_replace('^```[a-zA-Z]*\s*', '') | regex_replace('\s*```$', '') }}
+              - variables:
+                  parsed: "{{ json_text | from_json(default=none) }}"
+              - variables:
+                  raw: "{{ parsed if parsed is mapping else none }}"
+      - variables:
+          advice: >-
+            {% if raw is mapping and raw.summary is string and raw.summary | trim | length > 0 %}
+              {% set p = raw.recommended_pct %}
+              {% set ok = p is number and p is not boolean and 0 <= p <= 200 %}
+              {{ {
+                'summary': raw.summary | trim | truncate(400, true, '', 0),
+                'recommended_pct': (p | round(0) | int) if ok else none,
+                'program_suggestions': raw.program_suggestions if raw.program_suggestions is list else [],
+                'warnings': raw.warnings if raw.warnings is list else []
+              } }}
+            {% else %}{{ none }}{% endif %}
+          rule_pct: "{{ dec.pct if dec.pct is number else none }}"
+      - variables:
+          # No advice (mode Off, provider error, unparseable reply): final is none,
+          # and the weather package keeps the rule decision. With advice, a rule skip
+          # or auto-apply off returns the decision unchanged; otherwise
+          # pct = clamp(ai, pct-30, min(pct+30, ai_max)).
+          final: >-
+            {% if advice is not mapping %}{{ none }}
+            {% elif auto_apply and not (dec.skip | default(false)) and rule_pct is not none
+                    and advice.recommended_pct is not none %}
+              {{ {'skip': false,
+                  'pct': ([[advice.recommended_pct, rule_pct - 30] | max, [rule_pct + 30, ai_max] | min] | min) | round(0) | int,
+                  'reason': ''} }}
+            {% else %}
+              {{ {'skip': dec.skip | default(false) | bool(false),
+                  'pct': rule_pct,
+                  'reason': dec.reason | default('', true)} }}
+            {% endif %}
+      - if:
+          - condition: template
+            value_template: "{{ advice is mapping }}"
+        then:
+          - event: irrigation_advice
+            event_data:
+              summary: "{{ advice.summary }}"
+              recommended_pct: "{{ advice.recommended_pct }}"
+              program_suggestions: "{{ advice.program_suggestions }}"
+              warnings: "{{ advice.warnings }}"
+              provider: "{{ ai_mode }}"
+      - variables:
+          result:
+            final: "{{ final }}"
+            advice: "{{ advice }}"
+      - stop: Advice ready
+        response_variable: result
+
+template:
+  - triggers:
+      - trigger: event
+        event_type: irrigation_advice
+    sensor:
+      - name: Irrigation advice
+        unique_id: irrigation_advice
+        icon: mdi:robot-outline
+        state: "{{ trigger.event.data.summary | string | truncate(255, true, '', 0) }}"
+        attributes:
+          summary: "{{ trigger.event.data.summary }}"
+          recommended_pct: "{{ trigger.event.data.recommended_pct }}"
+          program_suggestions: "{{ trigger.event.data.program_suggestions }}"
+          warnings: "{{ trigger.event.data.warnings }}"
+          generated_at: "{{ now().isoformat() }}"
+          provider: "{{ trigger.event.data.provider }}"
