@@ -39,25 +39,25 @@ async def test_cost_rounding(pkg_hass):
         await set_litres(pkg_hass, meter, 1234.5)
         assert number(pkg_hass, f"sensor.irrigation_cost_{period}") == pytest.approx(3.70)
     st = pkg_hass.states.get("sensor.irrigation_cost_today")
-    assert st.state == "3.70"
+    assert number(pkg_hass, "sensor.irrigation_cost_today") == 3.70
     assert st.attributes["device_class"] == "monetary"
     assert st.attributes["unit_of_measurement"] == "$"
     # follows the tariff
     await set_tariff(pkg_hass, 4.50)
-    assert pkg_hass.states.get("sensor.irrigation_cost_today").state == "5.56"
+    assert number(pkg_hass, "sensor.irrigation_cost_today") == 5.56
 
 
 async def test_zero_tariff_is_zero(pkg_hass):
     await set_tariff(pkg_hass, 0)
     for period, meter in COSTS.items():
         await set_litres(pkg_hass, meter, 1234.5)
-        assert pkg_hass.states.get(f"sensor.irrigation_cost_{period}").state == "0.00"
+        assert number(pkg_hass, f"sensor.irrigation_cost_{period}") == 0.0
 
 
 async def test_unavailable_inputs_give_unavailable_not_zero(pkg_hass):
     await set_tariff(pkg_hass, 3.00)
     await set_litres(pkg_hass, "irrigation_water_today", 1000)
-    assert pkg_hass.states.get("sensor.irrigation_cost_today").state == "3.00"
+    assert number(pkg_hass, "sensor.irrigation_cost_today") == 3.0
     await set_litres(pkg_hass, "irrigation_water_today", "unavailable")
     assert pkg_hass.states.get("sensor.irrigation_cost_today").state == "unavailable"
     await set_litres(pkg_hass, "irrigation_water_today", 1000)
@@ -70,7 +70,7 @@ async def test_cost_sensors_load_without_warnings(pkg_hass, caplog):
     caplog.set_level(logging.WARNING)
     await set_tariff(pkg_hass, 3.00)
     await set_litres(pkg_hass, "irrigation_water_today", 10)
-    assert pkg_hass.states.get("sensor.irrigation_cost_today").state == "0.03"
+    assert number(pkg_hass, "sensor.irrigation_cost_today") == 0.03
     bad = [r.getMessage() for r in caplog.records
            if "cost" in r.getMessage() and r.levelno >= logging.WARNING]
     assert not bad, bad

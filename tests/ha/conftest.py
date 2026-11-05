@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from homeassistant.config import merge_packages_config
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.helpers import entity_platform
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 from homeassistant.util.yaml import load_yaml
@@ -55,6 +56,11 @@ async def pkg_hass(hass: HomeAssistant) -> AsyncGenerator[HomeAssistant, None]:
         {"entity_id": ["automation.irrigation_refresh_upcoming_runs",
                        "automation.irrigation_daily_adjust",
                        "automation.irrigation_rain_snapshot"]}, blocking=True)
+    await hass.async_block_till_done()
+    # utility_meter schedules its next period reset with a point-in-time timer; remove
+    # only that integration's entities so the timers are cancelled.
+    for platform in entity_platform.async_get_platforms(hass, "utility_meter"):
+        await platform.async_reset()
     await hass.async_block_till_done()
 
 
