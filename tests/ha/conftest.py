@@ -16,7 +16,8 @@ PACKAGES = ROOT / "packages" / "irrigation"
 pytest_plugins = "pytest_homeassistant_custom_component"
 
 DOMAINS = ("input_boolean", "input_datetime", "input_number", "input_select",
-           "input_text", "template", "script", "automation", "utility_meter")
+           "input_text", "template", "sensor", "utility_meter", "script", "automation")
+CORE_KEYS = ("homeassistant",)
 
 RESPONSE_ACTIONS = ("get_plan", "get_run_log", "get_config")
 VOID_ACTIONS = ("run_zone", "run_program", "stop_all", "rain_delay",
@@ -37,6 +38,8 @@ async def pkg_hass(hass: HomeAssistant) -> HomeAssistant:
         merged = await merged
     if isinstance(merged, dict):
         config = merged
+    unknown = set(config) - set(DOMAINS) - set(CORE_KEYS)
+    assert not unknown, f"package domains not set up by pkg_hass (add to DOMAINS): {sorted(unknown)}"
     for domain in DOMAINS:
         if domain in config:
             assert await async_setup_component(hass, domain, {domain: config[domain]}), domain
@@ -45,11 +48,30 @@ async def pkg_hass(hass: HomeAssistant) -> HomeAssistant:
 
 
 class Stub:
-    """A mocked service: records calls, returns a settable response."""
+    """A mocked service: records calls, returns a settable response.
+
+    side_effect: an exception (raised on every call), a callable(data) whose
+    result is returned, or a list consumed one item per call (an exception item
+    is raised, any other item is returned).
+    """
 
     def __init__(self):
         self.calls = []
         self.response = {}
+        self.side_effect = None
+
+    def run(self, data: dict, default):
+        self.calls.append(data)
+        eff = self.side_effect
+        if isinstance(eff, list):
+            eff = eff.pop(0)
+        if isinstance(eff, BaseException):
+            raise eff
+        if callable(eff):
+            return eff(data)
+        if eff is not None:
+            return eff
+        return default
 
 
 class Device:
@@ -62,6 +84,7 @@ class Device:
         self.zone_outputs: dict = {}
 
     def respond(self, action: str, data: dict) -> None:
+        assert action in RESPONSE_ACTIONS, f"{action} is not a response action"
         self.responses[action] = data
 
     def register(self) -> None:
@@ -80,11 +103,13 @@ class Device:
             if action == "set_zone":
                 out = data.get("zone_output", "")
                 zone = data.get("zone")
-                if out:
+                if out == "None":
+                    self.zone_outputs.pop(zone, None)  # releases the claim
+                elif out:  # "" leaves the output unchanged
                     for z, o in self.zone_outputs.items():
                         if o == out and z != zone:
                             raise HomeAssistantError(f"DUPLICATE output {out}")
-                    self.zone_outputs[zone] = out
+                    self.zone_outputs[zone] = out  # replaces (releases) the old claim
             if action in RESPONSE_ACTIONS:
                 return self.responses[action]
             return None
@@ -113,18 +138,19 @@ class Mocks:
 async def mocks(hass: HomeAssistant) -> Mocks:
     m = Mocks()
 
-    def reg(domain, name, stub, response=False):
+    def reg(domain, name, stub, response=False, supports=None):
+        supports = supports or (SupportsResponse.ONLY if response else SupportsResponse.NONE)
         async def handle(call: ServiceCall):
-            stub.calls.append(dict(call.data))
-            return stub.response if response else None
+            return stub.run(dict(call.data), stub.response if response else None)
 
         hass.services.async_register(
             domain, name, handle,
-            supports_response=SupportsResponse.ONLY if response else SupportsResponse.NONE)
+            supports_response=supports)
 
     reg("weather", "get_forecasts", m.weather, response=True)
     reg("ai_task", "generate_data", m.ai_task, response=True)
-    reg("conversation", "process", m.conversation, response=True)
+    reg("conversation", "process", m.conversation, response=True,
+        supports=SupportsResponse.OPTIONAL)
     reg("calendar", "create_event", m.calendar)
     reg("notify", "mobile_app_test", m.notify)
     reg("notify", "mobile_app_test2", m.notify2)
