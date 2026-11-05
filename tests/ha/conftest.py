@@ -49,10 +49,12 @@ async def pkg_hass(hass: HomeAssistant) -> AsyncGenerator[HomeAssistant, None]:
     await hass.async_block_till_done()
     assert await async_setup_component(hass, "system_log", {})  # system_log.write
     yield hass
-    # Cancel the 30-minute time_pattern listener so no timer outlives the test.
+    # Cancel the time-triggered listeners so no timer outlives the test.
     await hass.services.async_call(
         "automation", "turn_off",
-        {"entity_id": "automation.irrigation_refresh_upcoming_runs"}, blocking=True)
+        {"entity_id": ["automation.irrigation_refresh_upcoming_runs",
+                       "automation.irrigation_daily_adjust",
+                       "automation.irrigation_rain_snapshot"]}, blocking=True)
     await hass.async_block_till_done()
 
 

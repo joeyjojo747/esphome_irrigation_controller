@@ -1,0 +1,197 @@
+# Irrigation controller: weather rules and the daily adjustment push.
+# Every threshold is a helper (irrigation_helpers.yaml). Any weather entity with
+# daily forecasts works (e.g. the HACS bremor/bureau_of_meteorology integration).
+# script.irrigation_ai_advice (irrigation_ai.yaml) is used only if it exists.
+# Entity ids depend on the device name "irrigation-controller": do not change it.
+
+automation:
+  - id: irrigation_daily_adjust
+    alias: Irrigation daily adjust
+    mode: single
+    triggers:
+      - trigger: time
+        at: input_datetime.irrigation_eval_time
+    actions:
+      - action: script.irrigation_evaluate_weather
+        response_variable: rule
+      - if:
+          - condition: template
+            value_template: "{{ rule is not mapping or rule.pct is none }}"
+        then:
+          # Weather unavailable: push nothing, the device falls back by itself.
+          - event: irrigation_decision
+            event_data:
+              pct: null
+              skip: false
+              reason: ""
+              error: "{{ rule.reason if rule is mapping else 'weather unavailable' }}"
+              inputs: "{{ rule.inputs if rule is mapping else {} }}"
+              ai_applied: false
+              pushed: false
+          - stop: Weather unavailable, nothing pushed
+      - variables:
+          final: "{{ rule }}"
+          ai_applied: false
+      # script.irrigation_ai_advice is created by the AI package (optional).
+      - if:
+          - condition: template
+            value_template: >-
+              {{ states('script.irrigation_ai_advice') not in ['unknown', 'unavailable'] }}
+        then:
+          - action: script.irrigation_ai_advice
+            data:
+              rule: "{{ rule }}"
+            response_variable: ai
+            continue_on_error: true
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ ai is defined and ai is mapping and ai.pct is defined and ai.pct is not none
+                     and ai.skip is defined }}
+            then:
+              - variables:
+                  final:
+                    pct: "{{ ai.pct | int(0) }}"
+                    skip: "{{ ai.skip | bool(false) }}"
+                    reason: "{{ ai.reason | default('', true) }}"
+                  ai_applied: true
+      - variables:
+          valid_hours: "{{ states('input_number.irrigation_valid_hours') | float(30) | round(0) | int }}"
+      - action: esphome.irrigation_controller_set_weather_adjust
+        data:
+          pct: "{{ final.pct | int(100) }}"
+          skip: "{{ final.skip | bool(false) }}"
+          reason: "{{ final.reason | default('', true) }}"
+          valid_hours: "{{ valid_hours }}"
+      - event: irrigation_decision
+        event_data:
+          pct: "{{ final.pct | int(100) }}"
+          skip: "{{ final.skip | bool(false) }}"
+          reason: "{{ final.reason | default('', true) }}"
+          inputs: "{{ rule.inputs }}"
+          ai_applied: "{{ ai_applied }}"
+          pushed: true
+
+  # Daily snapshot of the rain observation, feeding sensor.irrigation_rain_history.
+  - id: irrigation_rain_snapshot
+    alias: Irrigation rain snapshot
+    mode: single
+    triggers:
+      - trigger: time
+        at: "08:59:00"
+    actions:
+      - event: irrigation_rain_snapshot
+
+script:
+  irrigation_evaluate_weather:
+    alias: Irrigation evaluate weather
+    mode: parallel
+    sequence:
+      - variables:
+          we: "{{ states('input_text.irrigation_weather_entity') }}"
+          obs_e: "{{ states('input_text.irrigation_rain_obs_entity') }}"
+          obs_mm: >-
+            {{ (states(obs_e) | float(0)) if obs_e | length > 0 and '.' in obs_e else 0.0 }}
+          cum_n: "{{ states('input_number.irrigation_cumulative_days') | float(3) | round(0) | int }}"
+          cum_mm: >-
+            {% set d = state_attr('sensor.irrigation_rain_history', 'days') %}
+            {{ ((d[-cum_n:] | map('float', 0) | sum) if d is list and cum_n > 0 else 0.0) | round(1) }}
+      - action: weather.get_forecasts
+        target:
+          entity_id: "{{ we }}"
+        data:
+          type: daily
+        response_variable: fc
+        continue_on_error: true
+      - variables:
+          today: >-
+            {% if fc is defined and fc is mapping and fc.get(we) is mapping %}
+              {{ (fc[we].get('forecast') or [none])[0] }}
+            {% else %}{{ none }}{% endif %}
+      - variables:
+          res: >-
+            {% set ns = namespace(out=none) %}
+            {% if today is not mapping %}
+              {% set ns.out = {'skip': false, 'pct': none, 'reason': 'weather unavailable', 'inputs': {}} %}
+            {% else %}
+              {% set tmin = today.templow if today.templow is number else none %}
+              {% set tmax = today.temperature if today.temperature is number else none %}
+              {% set rain = today.precipitation | float(0) if today.precipitation is number else 0.0 %}
+              {% set prob = today.precipitation_probability | float(0) if today.precipitation_probability is number else 0.0 %}
+              {% set wind = today.wind_speed | float(0) if today.wind_speed is number else none %}
+              {% set total = obs_mm | float(0) + rain %}
+              {% set skip_mm = states('input_number.irrigation_rain_skip_mm') | float(3) %}
+              {% set prob_pct = states('input_number.irrigation_rain_prob_pct') | float(80) %}
+              {% set prob_mm = states('input_number.irrigation_rain_prob_mm') | float(2) %}
+              {% set freeze = states('input_number.irrigation_freeze_c') | float(2) %}
+              {% set wind_lim = states('input_number.irrigation_wind_kmh') | float(30) %}
+              {% set cum_lim = states('input_number.irrigation_cumulative_mm') | float(15) %}
+              {% set reason = '' %}
+              {% if total >= skip_mm %}
+                {% set reason = 'Rain ' ~ ('%.1f' | format(total)) ~ ' mm (24h + forecast)' %}
+              {% elif prob >= prob_pct and rain >= prob_mm %}
+                {% set reason = 'Rain chance ' ~ ('%.0f' | format(prob)) ~ '%' %}
+              {% elif tmin is not none and tmin <= freeze %}
+                {% set reason = 'Frost risk ' ~ ('%.1f' | format(tmin)) ~ '°C' %}
+              {% elif is_state('input_boolean.irrigation_wind_enabled', 'on') and wind is not none and wind >= wind_lim %}
+                {% set reason = 'Wind ' ~ ('%.0f' | format(wind)) ~ ' km/h' %}
+              {% elif cum_mm >= cum_lim %}
+                {% set reason = 'Rain ' ~ ('%.1f' | format(cum_mm)) ~ ' mm in ' ~ cum_n ~ ' days' %}
+              {% endif %}
+              {% set cool_c = states('input_number.irrigation_cool_c') | float(18) %}
+              {% set hot_c = states('input_number.irrigation_hot_c') | float(32) %}
+              {% if tmax is not none and tmax < cool_c %}
+                {% set factor = states('input_number.irrigation_cool_pct') | float(70) | round(0) | int %}
+              {% elif tmax is not none and tmax > hot_c %}
+                {% set factor = states('input_number.irrigation_hot_pct') | float(130) | round(0) | int %}
+              {% else %}
+                {% set factor = 100 %}
+              {% endif %}
+              {% set ns.out = {
+                'skip': reason != '',
+                'pct': 0 if reason != '' else factor,
+                'reason': reason,
+                'inputs': {'tmin': tmin, 'tmax': tmax, 'rain_obs': obs_mm | float(0), 'rain_forecast': rain,
+                           'rain_prob': prob, 'wind': wind, 'rain_cumulative': cum_mm, 'cumulative_days': cum_n}
+              } %}
+            {% endif %}
+            {{ ns.out }}
+      - stop: Evaluated
+        response_variable: res
+
+template:
+  # Daily rain-observation snapshot; keeps the last 14 values (oldest first).
+  - triggers:
+      - trigger: event
+        event_type: irrigation_rain_snapshot
+    variables:
+      obs_e: "{{ states('input_text.irrigation_rain_obs_entity') }}"
+      val: >-
+        {{ ((states(obs_e) | float(0)) if obs_e | length > 0 and '.' in obs_e else 0.0) | round(1) }}
+      days: >-
+        {% set prev = state_attr('sensor.irrigation_rain_history', 'days') %}
+        {{ ((prev if prev is list else []) + [val])[-14:] }}
+    sensor:
+      - name: Irrigation rain history
+        unique_id: irrigation_rain_history
+        icon: mdi:weather-rainy
+        unit_of_measurement: mm
+        state: "{{ val }}"
+        attributes:
+          days: "{{ days }}"
+
+  - triggers:
+      - trigger: event
+        event_type: irrigation_decision
+    sensor:
+      - name: Irrigation weather decision
+        unique_id: irrigation_weather_decision
+        icon: mdi:weather-partly-rainy
+        state: >-
+          {% set e = trigger.event.data %}
+          {{ 'error' if e.pct is none else ('skip' if e.skip else e.pct) }}
+        attributes:
+          reason: "{{ trigger.event.data.reason if trigger.event.data.pct is not none else trigger.event.data.error }}"
+          inputs: "{{ trigger.event.data.inputs }}"
+          pushed_at: "{{ now().isoformat() if trigger.event.data.pushed else none }}"
+          ai_applied: "{{ trigger.event.data.ai_applied }}"
