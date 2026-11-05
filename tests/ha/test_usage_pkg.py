@@ -103,3 +103,12 @@ def test_meters_use_total_increasing_source():
         assert fw["state_class"] == "total_increasing", src
         assert fw["unit_of_measurement"] == "L", src
         assert not meter.get("net_consumption"), key
+
+
+def test_meters_not_periodically_resetting():
+    # The firmware counters never reset: a lower value after a device reboot must not
+    # be taken as a reset and the whole lifetime total counted again.
+    meters = usage_pkg()["utility_meter"]
+    assert len(meters) == 19
+    for key, meter in meters.items():
+        assert meter.get("periodically_resetting") is False, key

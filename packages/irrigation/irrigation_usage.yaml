@@ -1,7 +1,9 @@
 # Irrigation controller: water usage and cost.
 # utility_meter sensors accumulate the firmware's total_increasing litre counters
-# (sensor.irrigation_total_water and sensor.irrigation_zone_N_water), so device
-# reboots are handled by HA. Water totals do not use the run log.
+# (sensor.irrigation_total_water and sensor.irrigation_zone_N_water). Those counters
+# never reset, so every meter has periodically_resetting: false: a device reboot or
+# an HA restart (source briefly unavailable, or a slightly lower restored total) is
+# not counted again as a fresh lifetime total. Water totals do not use the run log.
 # Cost sensors = litres x input_number.irrigation_tariff_per_kl / 1000, 2 dp.
 # They are unavailable (never 0) when the meter or the tariff is unavailable or
 # unknown; a tariff of 0 gives 0.00. Cost has device_class monetary, unit "$" and no
@@ -13,78 +15,97 @@ utility_meter:
     name: Irrigation water today
     source: sensor.irrigation_total_water
     cycle: daily
+    periodically_resetting: false
   irrigation_water_month:
     name: Irrigation water month
     source: sensor.irrigation_total_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_water_year:
     name: Irrigation water year
     source: sensor.irrigation_total_water
     cycle: yearly
+    periodically_resetting: false
   irrigation_zone_1_water_month:
     name: Irrigation zone 1 water month
     source: sensor.irrigation_zone_1_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_2_water_month:
     name: Irrigation zone 2 water month
     source: sensor.irrigation_zone_2_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_3_water_month:
     name: Irrigation zone 3 water month
     source: sensor.irrigation_zone_3_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_4_water_month:
     name: Irrigation zone 4 water month
     source: sensor.irrigation_zone_4_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_5_water_month:
     name: Irrigation zone 5 water month
     source: sensor.irrigation_zone_5_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_6_water_month:
     name: Irrigation zone 6 water month
     source: sensor.irrigation_zone_6_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_7_water_month:
     name: Irrigation zone 7 water month
     source: sensor.irrigation_zone_7_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_8_water_month:
     name: Irrigation zone 8 water month
     source: sensor.irrigation_zone_8_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_9_water_month:
     name: Irrigation zone 9 water month
     source: sensor.irrigation_zone_9_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_10_water_month:
     name: Irrigation zone 10 water month
     source: sensor.irrigation_zone_10_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_11_water_month:
     name: Irrigation zone 11 water month
     source: sensor.irrigation_zone_11_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_12_water_month:
     name: Irrigation zone 12 water month
     source: sensor.irrigation_zone_12_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_13_water_month:
     name: Irrigation zone 13 water month
     source: sensor.irrigation_zone_13_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_14_water_month:
     name: Irrigation zone 14 water month
     source: sensor.irrigation_zone_14_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_15_water_month:
     name: Irrigation zone 15 water month
     source: sensor.irrigation_zone_15_water
     cycle: monthly
+    periodically_resetting: false
   irrigation_zone_16_water_month:
     name: Irrigation zone 16 water month
     source: sensor.irrigation_zone_16_water
     cycle: monthly
+    periodically_resetting: false
 
 template:
   - sensor:
