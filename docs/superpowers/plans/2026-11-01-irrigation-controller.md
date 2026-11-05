@@ -864,6 +864,8 @@ irrigation_core:
       - After HA is back, the runs appear in `get_run_log` and the calendar.
   15. **Stop always works.** With `Controller Enabled` off, a short Start press does nothing, but a Stop press during a manual zone run from the web UI still stops it.
   16. **Functions from HA.** Set `Start Button Short Press` to Stop All in HA, then disconnect Wi-Fi and power-cycle. With the DS3231 fitted, start Zone 1 from the device web UI over the fallback AP (or let a due program start), then press Start. A short Start press now stops watering, which shows the setting was kept in NVS. Set it back to Run Program.
+  17. **Stop while watering (final-review I-2).** During a run, a Stop press held about 1.5 s, and another held 3 s, each stop all watering at once. While idle, a long Stop press still toggles the rain delay.
+  18. **Zone with no output (final-review I-4).** Turn on `Zone 9` in HA (no output by default). The master relay stays off (check with a multimeter), `Last Error` shows "Zone 9 has no output", and a `no_output` alert event fires (it does not notify).
 - [ ] **Step 4:** Commit `docs: install wiring and bench test results`.
 
 ---
