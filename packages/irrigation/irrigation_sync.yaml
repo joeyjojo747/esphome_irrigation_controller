@@ -25,10 +25,11 @@ automation:
       d: "{{ trigger.event.data.json | from_json({}) }}"
     actions:
       - choose:
-          - conditions: "{{ t in ['run_started', 'run_finished', 'skipped'] }}"
+          # `event:` takes a literal name, so each record type has its own branch.
+          - conditions: "{{ t == 'run_started' }}"
             sequence:
-              - event: "irrigation_{{ t }}"
-                event_data:
+              - event: irrigation_run_started
+                event_data: &record_data
                   seq: "{{ d.seq }}"
                   inst: "{{ d.inst }}"
                   p: "{{ d.p }}"
@@ -38,13 +39,17 @@ automation:
                   act: "{{ d.act }}"
                   l: "{{ d.l }}"
                   r: "{{ d.r }}"
-              - if:
+          - conditions: "{{ t == 'run_finished' }}"
+            sequence:
+              - event: irrigation_run_finished
+                event_data: *record_data
+              - &advance_helpers
+                if:
                   - condition: template
                     value_template: >-
                       {% set lt = states('input_number.irrigation_last_ts') | int(0) %}
                       {% set ls = states('input_number.irrigation_last_seq') | int(0) %}
-                      {{ t in ['run_finished', 'skipped']
-                         and (d.ts | int(0) > lt or (d.ts | int(0) == lt and d.seq | int(0) > ls)) }}
+                      {{ d.ts | int(0) > lt or (d.ts | int(0) == lt and d.seq | int(0) > ls) }}
                 then:
                   - action: input_number.set_value
                     target:
@@ -56,6 +61,11 @@ automation:
                       entity_id: input_number.irrigation_last_seq
                     data:
                       value: "{{ d.seq | int(0) }}"
+          - conditions: "{{ t == 'skipped' }}"
+            sequence:
+              - event: irrigation_skipped
+                event_data: *record_data
+              - *advance_helpers
           - conditions: "{{ t == 'program_started' }}"
             sequence:
               - event: irrigation_program_started
