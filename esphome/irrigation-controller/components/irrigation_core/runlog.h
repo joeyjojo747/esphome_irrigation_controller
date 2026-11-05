@@ -38,6 +38,11 @@ class RunLog {
 const char* result_name(Result r);
 std::string record_json(const RunRecord& r);
 std::string records_json(const std::vector<RunRecord>& v);
-std::string plan_json(const std::vector<PlannedRun>& v);
+// At most max_entries runs are emitted; *truncated (if given) says whether any were dropped.
+constexpr size_t kPlanMaxEntries = 256;
+std::string plan_json(const std::vector<PlannedRun>& v, size_t max_entries = kPlanMaxEntries,
+                      bool* truncated = nullptr);
+// Cut s to at most max_bytes without splitting a UTF-8 code point.
+std::string truncate_utf8(const std::string& s, size_t max_bytes);
 
 }  // namespace irrigation

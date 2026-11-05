@@ -15,6 +15,31 @@ TEST_CASE("runlog: plan_json exact") {
   CHECK(plan_json({p}) == "[{\"p\":0,\"date\":\"2026-11-03\",\"start\":\"06:00\",\"s\":480,\"pct\":80,\"zones\":1}]");
 }
 
+TEST_CASE("runlog: plan_json caps entries and flags truncation") {
+  PlannedRun p{0, days_from_civil(2026, 11, 3), 360, 480, 80, 1};
+  std::vector<PlannedRun> v(300, p);
+  bool trunc = false;
+  std::string s = plan_json(v, 256, &trunc);
+  CHECK(trunc);
+  size_t n = 0;
+  for (size_t pos = 0; (pos = s.find("{\"p\"", pos)) != std::string::npos; pos++) n++;
+  CHECK(n == 256);
+  trunc = true;
+  plan_json(std::vector<PlannedRun>(256, p), 256, &trunc);
+  CHECK_FALSE(trunc);
+}
+
+TEST_CASE("runlog: truncate_utf8 never splits a code point") {
+  CHECK(truncate_utf8("abcdef", 3) == "abc");
+  CHECK(truncate_utf8("abc", 24) == "abc");
+  // U+00E9 is 2 bytes (C3 A9); cutting after the lead byte must drop the whole character.
+  CHECK(truncate_utf8("ab\xC3\xA9", 3) == "ab");
+  CHECK(truncate_utf8("ab\xC3\xA9", 4) == "ab\xC3\xA9");
+  // U+20AC is 3 bytes (E2 82 AC).
+  CHECK(truncate_utf8("a\xE2\x82\xAC", 3) == "a");
+  CHECK(truncate_utf8("a\xE2\x82\xAC", 2) == "a");
+}
+
 TEST_CASE("runlog: ring keeps 48") {
   RunLog log;
   for (int i = 0; i < 50; i++) log.add(RunRecord{});

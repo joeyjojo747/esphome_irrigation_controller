@@ -223,7 +223,8 @@ class IrrigationCore : public Component {
   void set_zone_name(uint8_t z, const std::string &name);
 
   // ---- JSON ----
-  std::string plan_json(int days);
+  // days is clamped to 1..14; at most 256 runs are emitted (*truncated says if more existed).
+  std::string plan_json(int days, bool *truncated = nullptr);
   std::string runlog_json(uint32_t since_seq);
   std::string config_json();
 

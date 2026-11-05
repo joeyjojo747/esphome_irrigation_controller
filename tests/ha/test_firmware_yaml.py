@@ -327,3 +327,21 @@ def test_program_editor_entity_set():
         "Program Editor Weather Adjust", "Program Editor Save", "Program Editor Revert",
     }
     assert expected <= names
+
+
+def test_response_actions_report_parse_errors():
+    acts = _actions()
+    for name in RESPONSE_ACTIONS:
+        code = yaml.dump(acts[name]["then"])
+        assert 'root["error"]' in code, name
+    # the run-log cursor must only be emitted when the records were built
+    code = acts["get_run_log"]["then"][0]["api.respond"]["data"]
+    assert code.index("if (ok)") < code.index('root["last"]')
+    plan = acts["get_plan"]["then"][0]["api.respond"]["data"]
+    assert "truncated" in plan
+
+
+def test_interval_reanchor_only_when_edited():
+    text = (PKG / "editor_program.yaml").read_text(encoding="utf-8")
+    assert text.count("pe_dtf_dirty) = true") == 3  # day mode, interval days, days until first
+    assert "&& id(pe_dtf_dirty)" in text

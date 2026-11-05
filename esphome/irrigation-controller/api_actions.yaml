@@ -6,6 +6,9 @@
 # nothing changed). The editors and settings entities reload after each set_*.
 # set_zone takes its output label as zone_output ("output" is a reserved ESPHome id
 # and is rejected as an action variable name); "" leaves the output unchanged.
+# Response actions put an "error" string in the response (and omit "last") if their
+# JSON could not be built. get_plan clamps days to 1..14 and caps the plan at 256 runs
+# ("truncated": true when more existed).
 api:
   actions:
     - action: run_zone
@@ -112,10 +115,18 @@ api:
       then:
         - api.respond:
             data: !lambda |-
-              ArduinoJson::JsonDocument doc;
-              const std::string text = id(irr).plan_json(days);
-              const bool ok = ArduinoJson::deserializeJson(doc, text) == ArduinoJson::DeserializationError::Ok;
-              if (ok) root["plan"].set(doc.as<ArduinoJson::JsonVariantConst>());
+              bool truncated = false; ArduinoJson::JsonDocument doc;
+              const std::string text = id(irr).plan_json(days, &truncated);
+              const ArduinoJson::DeserializationError err = ArduinoJson::deserializeJson(doc, text);
+              const bool ok = err == ArduinoJson::DeserializationError::Ok;
+              if (!ok) {
+                ESP_LOGW("irrigation_core", "get_plan: JSON parse failed: %s", err.c_str());
+                root["error"] = err.c_str();
+              }
+              if (ok) {
+                root["plan"].set(doc.as<ArduinoJson::JsonVariantConst>());
+                if (truncated) root["truncated"] = true;
+              }
     - action: get_run_log
       supports_response: only
       variables:
@@ -125,9 +136,16 @@ api:
             data: !lambda |-
               ArduinoJson::JsonDocument doc;
               const std::string text = id(irr).runlog_json(since < 0 ? 0u : (uint32_t) since);
-              const bool ok = ArduinoJson::deserializeJson(doc, text) == ArduinoJson::DeserializationError::Ok;
-              if (ok) root["records"].set(doc.as<ArduinoJson::JsonVariantConst>());
-              root["last"] = id(irr).runlog_last_seq();
+              const ArduinoJson::DeserializationError err = ArduinoJson::deserializeJson(doc, text);
+              const bool ok = err == ArduinoJson::DeserializationError::Ok;
+              if (!ok) {
+                ESP_LOGW("irrigation_core", "get_run_log: JSON parse failed: %s", err.c_str());
+                root["error"] = err.c_str();
+              }
+              if (ok) {
+                root["records"].set(doc.as<ArduinoJson::JsonVariantConst>());
+                root["last"] = id(irr).runlog_last_seq();
+              }
     - action: get_config
       supports_response: only
       then:
@@ -135,6 +153,11 @@ api:
             data: !lambda |-
               ArduinoJson::JsonDocument doc;
               const std::string text = id(irr).config_json();
-              const bool ok = ArduinoJson::deserializeJson(doc, text) == ArduinoJson::DeserializationError::Ok;
+              const ArduinoJson::DeserializationError err = ArduinoJson::deserializeJson(doc, text);
+              const bool ok = err == ArduinoJson::DeserializationError::Ok;
+              if (!ok) {
+                ESP_LOGW("irrigation_core", "get_config: JSON parse failed: %s", err.c_str());
+                root["error"] = err.c_str();
+              }
               if (ok)
                 for (ArduinoJson::JsonPair kv : doc.as<ArduinoJson::JsonObject>()) root[kv.key()] = kv.value();

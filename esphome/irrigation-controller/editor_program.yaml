@@ -20,6 +20,11 @@ globals:
   - id: pe_dtf
     type: int
     initial_value: '0'
+  # Set when the day mode, interval or days-until-first is edited: only then does Save
+  # re-anchor an Every-N-days program (otherwise its anchor is kept as loaded).
+  - id: pe_dtf_dirty
+    type: bool
+    initial_value: 'false'
   - id: pe_shadow_1
     type: int
     initial_value: '480'
@@ -126,7 +131,8 @@ script:
           id(pe_wd_5).publish_state(((b.weekday_mask >> 5) & 1) != 0);
           id(pe_wd_6).publish_state(((b.weekday_mask >> 6) & 1) != 0);
           id(pe_interval).publish_state((float) b.interval_days);
-          id(pe_dtf) = id(irr).program_days_until_first(i);
+          id(pe_dtf) = id(irr).program_days_until_first(i);  // 0 until the clock is valid
+          id(pe_dtf_dirty) = false;
           id(pe_dtf_num).publish_state((float) id(pe_dtf));
           if (b.start_minutes[0] >= 0) id(pe_shadow_1) = b.start_minutes[0];
           id(pe_start_1).make_call().set_time(id(pe_shadow_1) / 60, id(pe_shadow_1) % 60, 0).perform();
@@ -184,6 +190,7 @@ select:
           static const char *const o[] = {"Weekdays", "Odd days", "Even days", "Every N days"};
           for (int i = 0; i < 4; i++)
             if (x == o[i]) id(pe_buf).mode = (irrigation::DayMode) i;
+          id(pe_dtf_dirty) = true;
 
 switch:
   - platform: template
@@ -338,7 +345,9 @@ number:
     step: 1
     mode: box
     set_action:
-      - lambda: 'id(pe_buf).interval_days = (uint8_t) x;'
+      - lambda: |-
+          id(pe_buf).interval_days = (uint8_t) x;
+          id(pe_dtf_dirty) = true;
   - platform: template
     id: pe_dtf_num
     name: "Program Editor Days Until First Run"
@@ -349,7 +358,9 @@ number:
     step: 1
     mode: box
     set_action:
-      - lambda: 'id(pe_dtf) = (int) x;'
+      - lambda: |-
+          id(pe_dtf) = (int) x;
+          id(pe_dtf_dirty) = true;
   - platform: template
     id: pe_seasonal
     name: "Program Editor Seasonal Adjust"
@@ -605,8 +616,14 @@ button:
       - lambda: |-
           const uint8_t i = (uint8_t) id(pe_idx);
           id(irr).program(i) = id(pe_buf);
-          if (id(pe_buf).mode == irrigation::DayMode::INTERVAL)
-            id(irr).set_program_interval_offset(i, (uint8_t) id(pe_dtf));
+          if (id(pe_buf).mode == irrigation::DayMode::INTERVAL && id(pe_dtf_dirty)) {
+            int d = id(pe_dtf);
+            const int n = id(pe_buf).interval_days < 1 ? 1 : id(pe_buf).interval_days;
+            if (d >= n) d = n - 1;
+            if (d < 0) d = 0;
+            id(irr).set_program_interval_offset(i, (uint8_t) d);
+          }
+          id(pe_dtf_dirty) = false;
           id(irr).save_program(i);
   - platform: template
     id: pe_revert

@@ -60,9 +60,18 @@ std::string records_json(const std::vector<RunRecord>& v) {
   return s;
 }
 
-std::string plan_json(const std::vector<PlannedRun>& v) {
+std::string truncate_utf8(const std::string& s, size_t max_bytes) {
+  if (s.size() <= max_bytes) return s;
+  size_t n = max_bytes;
+  // Back up over continuation bytes (10xxxxxx) so the next kept byte starts a code point.
+  while (n > 0 && (static_cast<unsigned char>(s[n]) & 0xC0) == 0x80) n--;
+  return s.substr(0, n);
+}
+
+std::string plan_json(const std::vector<PlannedRun>& v, size_t max_entries, bool* truncated) {
+  if (truncated) *truncated = v.size() > max_entries;
   std::string s = "[";
-  for (size_t i = 0; i < v.size(); i++) {
+  for (size_t i = 0; i < v.size() && i < max_entries; i++) {
     const PlannedRun& p = v[i];
     int y;
     unsigned m, d;

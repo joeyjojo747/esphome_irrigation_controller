@@ -1057,7 +1057,7 @@ int clamp_int(const char *what, int v, int lo, int hi) {
 
 float clamp_float(const char *what, float v, float lo, float hi) {
   float r = v;
-  if (!std::isfinite(r) || r < lo) r = lo;
+  if (std::isnan(r) || r < lo) r = lo;  // +inf falls through to hi
   if (r > hi) r = hi;
   if (!(r == v)) ESP_LOGW(TAG, "%s %.2f out of range %.2f..%.2f, using %.2f", what, v, lo, hi, r);
   return r;
@@ -1068,7 +1068,7 @@ float clamp_float(const char *what, float v, float lo, float hi) {
 void IrrigationCore::set_program_name(uint8_t p, const std::string &name) {
 #ifdef USE_IRRIGATION_NAME_TEXTS
   if (p >= kPrograms || this->program_name_texts_[p] == nullptr) return;
-  this->program_name_texts_[p]->make_call().set_value(name.substr(0, 24)).perform();
+  this->program_name_texts_[p]->make_call().set_value(irrigation::truncate_utf8(name, 24)).perform();
 #else
   (void) p;
   (void) name;
@@ -1078,7 +1078,7 @@ void IrrigationCore::set_program_name(uint8_t p, const std::string &name) {
 void IrrigationCore::set_zone_name(uint8_t z, const std::string &name) {
 #ifdef USE_IRRIGATION_NAME_TEXTS
   if (z >= kZones || this->zone_name_texts_[z] == nullptr) return;
-  this->zone_name_texts_[z]->make_call().set_value(name.substr(0, 24)).perform();
+  this->zone_name_texts_[z]->make_call().set_value(irrigation::truncate_utf8(name, 24)).perform();
 #else
   (void) z;
   (void) name;
@@ -1241,16 +1241,18 @@ int IrrigationCore::program_days_until_first(uint8_t i) const {
 
 // ---------------------------------------------------------------- JSON
 
-std::string IrrigationCore::plan_json(int days) {
+std::string IrrigationCore::plan_json(int days, bool *truncated) {
+  if (truncated != nullptr) *truncated = false;
   const Clock c = this->clock_now_();
-  if (!c.valid || days <= 0) return "[]";
-  if (days > 62) days = 62;
+  if (!c.valid) return "[]";
+  if (days < 1) days = 1;
+  if (days > 14) days = 14;
   const uint32_t ts = c.ts;
   auto runs = irrigation::project(
       this->programs_.p, this->zones_.z, this->settings_.zone_count, this->settings_.monthly_pct,
       this->settings_.zone_hard_cap_s, irrigation::LocalDateTime{c.day, c.minute}, days,
       [this, ts](const irrigation::Program &p, int32_t) { return irrigation::active_weather_pct(this->weather_, p, ts); });
-  return irrigation::plan_json(runs);
+  return irrigation::plan_json(runs, irrigation::kPlanMaxEntries, truncated);
 }
 
 std::string IrrigationCore::runlog_json(uint32_t since_seq) {
