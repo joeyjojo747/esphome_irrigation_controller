@@ -320,3 +320,44 @@ async def test_restore_swapped_outputs(pkg_hass, device):
     assert device.zone_outputs[1] == "B"
     assert device.zone_outputs[2] == "A"
     assert len(device.calls["set_zone"]) == 32
+
+
+# ---------------------------------------------------------------- I-1: HA start
+
+
+def test_reconnect_also_triggers_on_homeassistant_start():
+    from conftest import load_packages
+
+    autos = {a["id"]: a for a in load_packages()["irrigation_sync"]["automation"]}
+    triggers = autos["irrigation_reconnect"]["triggers"]
+    assert any(t.get("trigger") == "homeassistant" and t.get("event") == "start" for t in triggers)
+
+
+async def test_ha_start_replays_runs_made_while_ha_was_down(hass, device):
+    """The device reconnects before HA attaches triggers: the start trigger still syncs."""
+    from conftest import load_packages
+    from homeassistant.core import CoreState
+    from homeassistant.setup import async_setup_component
+
+    hass.set_state(CoreState.not_running)
+    pkgs = load_packages()
+    sync = pkgs["irrigation_sync"]
+    assert await async_setup_component(
+        hass, "input_number", {"input_number": pkgs["irrigation_helpers"]["input_number"]})
+    assert await async_setup_component(
+        hass, "script", {"script": {"irrigation_sync_runlog": sync["script"]["irrigation_sync_runlog"]}})
+    assert await async_setup_component(
+        hass, "automation",
+        {"automation": [a for a in sync["automation"] if a["id"] == "irrigation_reconnect"]})
+    await hass.async_block_till_done()
+    # Restored watermark: runs up to ts 1000 were already seen before the restart.
+    await set_helper(hass, "last_ts", 1000)
+    await set_helper(hass, "last_seq", 5)
+    device.respond("get_run_log", {"records": [rec(5, 1000), rec(6, 1100), rec(7, 1200)], "last": 7})
+    hass.states.async_set("sensor.irrigation_status", "idle")  # already connected
+    replayed = async_capture_events(hass, "irrigation_replayed_record")
+    await hass.async_start()
+    await settle(hass)
+    assert len(device.calls["get_run_log"]) == 1
+    assert [e.data["ts"] for e in replayed] == [1100, 1200]
+    assert helper(hass, "last_ts") == 1200

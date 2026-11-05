@@ -128,7 +128,22 @@ automation:
         entity_id: sensor.irrigation_status
         from: unavailable
         not_to: unavailable
+      # HA attaches triggers only once it has started, and the device usually
+      # reconnects before that, so the transition above is missed on an HA restart:
+      # runs made while HA was down are replayed from here. The (ts, seq) watermark is
+      # restored with the helpers, so records already seen are not replayed again.
+      - trigger: homeassistant
+        event: start
+        id: start
     actions:
+      - if:
+          - condition: trigger
+            id: start
+        then:
+          # Not connected yet: the state trigger above syncs when it connects.
+          - wait_template: "{{ has_value('sensor.irrigation_status') }}"
+            timeout: "00:05:00"
+            continue_on_timeout: false
       - action: script.irrigation_sync_runlog
       - if:
           - condition: template
