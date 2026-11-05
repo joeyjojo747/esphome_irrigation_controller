@@ -126,19 +126,15 @@ script:
                 response_variable: conv_res
                 continue_on_error: true
               - variables:
-                  speech: >-
-                    {{ conv_res.response.speech.plain.speech
-                       if conv_res is defined and conv_res is mapping and conv_res.response is mapping
-                          and conv_res.response.speech is mapping and conv_res.response.speech.plain is mapping
-                       else '' }}
-              - variables:
-                  # Tolerate a ```json fenced reply.
-                  json_text: >-
-                    {{ speech | string | trim | regex_replace('^```[a-zA-Z]*\s*', '') | regex_replace('\s*```$', '') }}
-              - variables:
-                  parsed: "{{ json_text | from_json(default=none) }}"
-              - variables:
-                  raw: "{{ parsed if parsed is mapping else none }}"
+                  # One template so a JSON reply is never auto-parsed before from_json;
+                  # a ```json fence around the reply is tolerated.
+                  raw: >-
+                    {% set ok = conv_res is defined and conv_res is mapping and conv_res.response is mapping
+                                and conv_res.response.speech is mapping and conv_res.response.speech.plain is mapping %}
+                    {% set s = (conv_res.response.speech.plain.speech if ok else '') | string | trim %}
+                    {% set s = s | regex_replace('^```[a-zA-Z]*\s*', '') | regex_replace('\s*```$', '') %}
+                    {% set j = s | from_json(default=none) %}
+                    {{ j if j is mapping else none }}
       - variables:
           advice: >-
             {% if raw is mapping and raw.summary is string and raw.summary | trim | length > 0 %}
