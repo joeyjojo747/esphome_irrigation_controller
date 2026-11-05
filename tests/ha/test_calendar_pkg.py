@@ -2,10 +2,18 @@
 
 import asyncio
 
+import pytest
+
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_capture_events
 
 TS = 1_700_000_000
+
+
+@pytest.fixture
+def expected_lingering_timers():
+    """The 30-minute refresh automation's time_pattern trigger leaves a timer."""
+    return True
 
 
 async def settle(hass):

@@ -137,7 +137,7 @@ template:
           {% set ns.out = ns.out + [{
             'program': p,
             'name': nm.n if nm.n != '' else 'Program ' ~ ('ABCDEFGH'[p] if 0 <= p < 8 else p),
-            'start': ((it.date ~ ' ' ~ it.start) | as_datetime | as_local).isoformat(),
+            'start': ((it.date ~ ' ' ~ it.start) | as_datetime).replace(tzinfo=now().tzinfo).isoformat(),
             'minutes': ((it.s | int(0)) / 60) | round(0) | int,
             'pct': it.pct | int(0)
           }] %}
