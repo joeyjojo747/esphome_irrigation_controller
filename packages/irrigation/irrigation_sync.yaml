@@ -1,0 +1,307 @@
+# Irrigation controller: event routing, run-log sync after outages, backup/restore.
+# The device fires one HA event (esphome.irrigation_event {node, type, json}); the
+# router re-fires it as irrigation_<type> with the parsed payload as event data.
+# Later packages consume those events. Entity ids depend on the device name
+# "irrigation-controller": do not change it.
+
+recorder:
+  exclude:
+    entities:
+      - sensor.irrigation_run_history
+      - sensor.irrigation_config_backup
+
+automation:
+  - id: irrigation_event_router
+    alias: Irrigation event router
+    mode: queued
+    max: 50
+    triggers:
+      - trigger: event
+        event_type: esphome.irrigation_event
+        event_data:
+          node: irrigation-controller
+    variables:
+      t: "{{ trigger.event.data.type }}"
+      d: "{{ trigger.event.data.json | from_json({}) }}"
+    actions:
+      - choose:
+          - conditions: "{{ t in ['run_started', 'run_finished', 'skipped'] }}"
+            sequence:
+              - event: "irrigation_{{ t }}"
+                event_data:
+                  seq: "{{ d.seq }}"
+                  inst: "{{ d.inst }}"
+                  p: "{{ d.p }}"
+                  z: "{{ d.z }}"
+                  ts: "{{ d.ts }}"
+                  plan: "{{ d.plan }}"
+                  act: "{{ d.act }}"
+                  l: "{{ d.l }}"
+                  r: "{{ d.r }}"
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {% set lt = states('input_number.irrigation_last_ts') | int(0) %}
+                      {% set ls = states('input_number.irrigation_last_seq') | int(0) %}
+                      {{ t in ['run_finished', 'skipped']
+                         and (d.ts | int(0) > lt or (d.ts | int(0) == lt and d.seq | int(0) > ls)) }}
+                then:
+                  - action: input_number.set_value
+                    target:
+                      entity_id: input_number.irrigation_last_ts
+                    data:
+                      value: "{{ d.ts | int(0) }}"
+                  - action: input_number.set_value
+                    target:
+                      entity_id: input_number.irrigation_last_seq
+                    data:
+                      value: "{{ d.seq | int(0) }}"
+          - conditions: "{{ t == 'program_started' }}"
+            sequence:
+              - event: irrigation_program_started
+                event_data:
+                  inst: "{{ d.inst }}"
+                  p: "{{ d.p }}"
+                  zones: "{{ d.zones }}"
+                  plan: "{{ d.plan }}"
+                  pct: "{{ d.pct }}"
+                  ts: "{{ d.ts }}"
+          - conditions: "{{ t == 'program_finished' }}"
+            sequence:
+              - event: irrigation_program_finished
+                event_data:
+                  inst: "{{ d.inst }}"
+                  p: "{{ d.p }}"
+                  zones: "{{ d.zones }}"
+                  act: "{{ d.act }}"
+                  l: "{{ d.l }}"
+                  ts: "{{ d.ts }}"
+                  warn: "{{ d.warn }}"
+          - conditions: "{{ t == 'alert' }}"
+            sequence:
+              - event: irrigation_alert
+                event_data:
+                  kind: "{{ d.kind }}"
+                  z: "{{ d.z }}"
+                  flow: "{{ d.flow }}"
+                  limit: "{{ d.limit }}"
+          - conditions: "{{ t == 'button' }}"
+            sequence:
+              - event: irrigation_button
+                event_data:
+                  btn: "{{ d.btn }}"
+                  press: "{{ d.press }}"
+                  fn: "{{ d.fn }}"
+                  cmd: "{{ d.cmd }}"
+          - conditions: "{{ t == 'config_changed' }}"
+            sequence:
+              - event: irrigation_config_changed
+              # script.irrigation_refresh_plan is created by the plan package.
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {{ states('script.irrigation_refresh_plan') not in ['unknown', 'unavailable'] }}
+                then:
+                  - action: script.irrigation_refresh_plan
+              # A restore must not overwrite its own backup; it takes one at the end.
+              - if:
+                  - condition: template
+                    value_template: "{{ not is_state('script.irrigation_restore_config', 'on') }}"
+                then:
+                  - action: script.irrigation_backup_config
+
+  - id: irrigation_reconnect
+    alias: Irrigation reconnect sync
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: sensor.irrigation_status
+        from: unavailable
+        not_to: unavailable
+    actions:
+      - action: script.irrigation_sync_runlog
+      - if:
+          - condition: template
+            value_template: >-
+              {{ states('script.irrigation_refresh_plan') not in ['unknown', 'unavailable'] }}
+        then:
+          - action: script.irrigation_refresh_plan
+
+script:
+  irrigation_sync_runlog:
+    alias: Irrigation sync run log
+    mode: single
+    sequence:
+      - action: esphome.irrigation_controller_get_run_log
+        data:
+          since: 0
+        response_variable: log
+      - if:
+          - condition: template
+            value_template: "{{ log is not mapping or log.error is defined or log.records is not defined }}"
+        then:
+          - stop: Run log unavailable
+      # A device reboot resets seq, so filter by time first and seq only as a tie break.
+      - variables:
+          last_ts: "{{ states('input_number.irrigation_last_ts') | int(0) }}"
+          last_seq: "{{ states('input_number.irrigation_last_seq') | int(0) }}"
+          pending: >-
+            {% set ns = namespace(items=[], keys=[]) %}
+            {% for r in log.records | sort(attribute='ts,seq') %}
+              {% set k = [r.ts | int(0), r.seq | int(0)] %}
+              {% if (k[0] > last_ts or (k[0] == last_ts and k[1] > last_seq)) and k not in ns.keys %}
+                {% set ns.keys = ns.keys + [k] %}
+                {% set ns.items = ns.items + [r] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.items }}
+      - repeat:
+          for_each: "{{ pending }}"
+          sequence:
+            - event: irrigation_replayed_record
+              event_data:
+                seq: "{{ repeat.item.seq }}"
+                inst: "{{ repeat.item.inst }}"
+                p: "{{ repeat.item.p }}"
+                z: "{{ repeat.item.z }}"
+                ts: "{{ repeat.item.ts }}"
+                plan: "{{ repeat.item.plan }}"
+                act: "{{ repeat.item.act }}"
+                l: "{{ repeat.item.l }}"
+                r: "{{ repeat.item.r }}"
+            - action: input_number.set_value
+              target:
+                entity_id: input_number.irrigation_last_ts
+              data:
+                value: "{{ repeat.item.ts | int(0) }}"
+            - action: input_number.set_value
+              target:
+                entity_id: input_number.irrigation_last_seq
+              data:
+                value: "{{ repeat.item.seq | int(0) }}"
+      - if:
+          - condition: template
+            value_template: "{{ pending | count > 0 }}"
+        then:
+          # Skipped records (z=255, no runner instance) are left out of the groups.
+          - variables:
+              groups: >-
+                {% set ns = namespace(recs=[], out=[]) %}
+                {% for r in pending %}
+                  {% if not r.r.startswith('skipped_') %}
+                    {% set ns.recs = ns.recs + [r] %}
+                  {% endif %}
+                {% endfor %}
+                {% for inst in ns.recs | map(attribute='inst') | unique | list %}
+                  {% set g = ns.recs | selectattr('inst', 'eq', inst) | list %}
+                  {% set ns.out = ns.out + [{
+                    'inst': inst,
+                    'p': g[0].p,
+                    'zones': g | count,
+                    'act': g | sum(attribute='act'),
+                    'l': (g | sum(attribute='l')) | round(1),
+                    'warn': (g | rejectattr('r', 'eq', 'completed') | list | count) > 0,
+                    'ts': g | map(attribute='ts') | min
+                  }] %}
+                {% endfor %}
+                {{ ns.out }}
+          - event: irrigation_replay_done
+            event_data:
+              groups: "{{ groups }}"
+
+  irrigation_backup_config:
+    alias: Irrigation backup config
+    mode: queued
+    sequence:
+      - action: esphome.irrigation_controller_get_config
+        response_variable: cfg
+      - if:
+          - condition: template
+            value_template: >-
+              {{ cfg is not mapping or cfg.error is defined or cfg.zones is not defined
+                 or cfg.programs is not defined or cfg.settings is not defined }}
+        then:
+          - stop: Config unavailable, backup not updated
+      - event: irrigation_config_backup
+        event_data:
+          config: "{{ cfg }}"
+
+  irrigation_restore_config:
+    alias: Irrigation restore config
+    mode: single
+    sequence:
+      - variables:
+          cfg: "{{ state_attr('sensor.irrigation_config_backup', 'config') }}"
+      - if:
+          - condition: template
+            value_template: "{{ cfg is not mapping or cfg.zones is not defined or cfg.programs is not defined or cfg.settings is not defined }}"
+        then:
+          - stop: No config backup to restore
+            error: true
+      # 1. release every output claim so swapped outputs cannot collide
+      - repeat:
+          for_each: "{{ cfg.zones }}"
+          sequence:
+            - action: esphome.irrigation_controller_set_zone
+              data: "{{ dict(repeat.item, zone_output='None') }}"
+      # 2. settings
+      - action: esphome.irrigation_controller_set_settings
+        data: "{{ cfg.settings }}"
+      # 3. programs
+      - repeat:
+          for_each: "{{ cfg.programs }}"
+          sequence:
+            - action: esphome.irrigation_controller_set_program
+              data: "{{ repeat.item }}"
+      # 4. zones with their real outputs
+      - repeat:
+          for_each: "{{ cfg.zones }}"
+          sequence:
+            - action: esphome.irrigation_controller_set_zone
+              data: "{{ repeat.item }}"
+      - action: script.irrigation_backup_config
+
+template:
+  - triggers:
+      - trigger: event
+        event_type: irrigation_run_finished
+      - trigger: event
+        event_type: irrigation_skipped
+      - trigger: event
+        event_type: irrigation_replayed_record
+    variables:
+      records: >-
+        {% set cutoff = now().timestamp() - 7 * 86400 %}
+        {% set e = trigger.event.data %}
+        {% set rec = {'seq': e.seq | int(0), 'inst': e.inst | int(0), 'p': e.p | int(0),
+                      'z': e.z | int(0), 'ts': e.ts | int(0), 'plan': e.plan | int(0),
+                      'act': e.act | int(0), 'l': e.l | float(0), 'r': e.r | string} %}
+        {% set ns = namespace(items=[]) %}
+        {% for r in this.attributes.records | default([], true) %}
+          {% if r.ts >= cutoff and not (r.ts == rec.ts and r.seq == rec.seq) %}
+            {% set ns.items = ns.items + [r] %}
+          {% endif %}
+        {% endfor %}
+        {% if rec.ts >= cutoff %}
+          {% set ns.items = ns.items + [rec] %}
+        {% endif %}
+        {{ (ns.items | sort(attribute='ts'))[-300:] }}
+    sensor:
+      - name: Irrigation run history
+        unique_id: irrigation_run_history
+        icon: mdi:history
+        state: "{{ records | count }}"
+        attributes:
+          records: "{{ records }}"
+
+  - triggers:
+      - trigger: event
+        event_type: irrigation_config_backup
+    sensor:
+      - name: Irrigation config backup
+        unique_id: irrigation_config_backup
+        icon: mdi:backup-restore
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+        attributes:
+          config: "{{ trigger.event.data.config }}"
