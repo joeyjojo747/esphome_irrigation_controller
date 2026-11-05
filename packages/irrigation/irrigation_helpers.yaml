@@ -1,24 +1,27 @@
 # Irrigation controller: helpers. Values are edited in the dashboard; the
 # definitions live here so a package install is all that is needed.
+#
+# No helper has `initial` (except the package version), so HA restores the last
+# value after a restart. The defaults live in ONE place, script.irrigation_apply_defaults,
+# which the start automation below runs once, on the first start after install
+# (input_boolean.irrigation_defaults_applied is off). Run the script by hand to reset
+# every setting to its default; it leaves the replay watermark alone once applied.
 input_text:
   irrigation_weather_entity:
     name: Irrigation weather entity
-    initial: "weather.home"
     max: 255
   irrigation_rain_obs_entity:
     name: Irrigation rain observation entity
-    initial: ""
     max: 255
   irrigation_ai_entity:
     name: Irrigation AI entity
-    initial: ""
     max: 255
   irrigation_notify_targets:
     name: Irrigation notify targets
-    initial: ""
     max: 255
   irrigation_package_version:
     name: Irrigation package version
+    # The only helper with `initial`: it always shows the installed package version.
     initial: "0.1.0"
     max: 32
 
@@ -29,24 +32,20 @@ input_select:
       - "Off"
       - "AI Task"
       - "Conversation agent"
-    initial: "Off"
 
 input_datetime:
   irrigation_eval_time:
     name: Irrigation evaluation time
     has_date: false
     has_time: true
-    initial: "03:00:00"
   irrigation_quiet_start:
     name: Irrigation quiet hours start
     has_date: false
     has_time: true
-    initial: "22:00:00"
   irrigation_quiet_end:
     name: Irrigation quiet hours end
     has_date: false
     has_time: true
-    initial: "07:00:00"
 
 input_number:
   irrigation_rain_skip_mm:
@@ -54,155 +53,237 @@ input_number:
     min: 0
     max: 100
     step: 0.5
-    initial: 3.0
     unit_of_measurement: mm
   irrigation_rain_prob_pct:
     name: Irrigation rain probability threshold
     min: 0
     max: 100
     step: 5
-    initial: 80
     unit_of_measurement: "%"
   irrigation_rain_prob_mm:
     name: Irrigation rain probability amount
     min: 0
     max: 100
     step: 0.5
-    initial: 2.0
     unit_of_measurement: mm
   irrigation_cumulative_days:
     name: Irrigation cumulative rain days
     min: 1
     max: 14
     step: 1
-    initial: 3
     unit_of_measurement: d
   irrigation_cumulative_mm:
     name: Irrigation cumulative rain
     min: 0
     max: 500
     step: 1
-    initial: 15
     unit_of_measurement: mm
   irrigation_freeze_c:
     name: Irrigation freeze limit
     min: -20
     max: 20
     step: 0.5
-    initial: 2
     unit_of_measurement: "°C"
   irrigation_wind_kmh:
     name: Irrigation wind limit
     min: 0
     max: 150
     step: 1
-    initial: 30
     unit_of_measurement: km/h
   irrigation_cool_c:
     name: Irrigation cool temperature
     min: -20
     max: 40
     step: 0.5
-    initial: 18
     unit_of_measurement: "°C"
   irrigation_cool_pct:
     name: Irrigation cool adjust
     min: 0
     max: 200
     step: 5
-    initial: 70
     unit_of_measurement: "%"
   irrigation_hot_c:
     name: Irrigation hot temperature
     min: 0
     max: 60
     step: 0.5
-    initial: 32
     unit_of_measurement: "°C"
   irrigation_hot_pct:
     name: Irrigation hot adjust
     min: 0
     max: 300
     step: 5
-    initial: 130
     unit_of_measurement: "%"
   irrigation_valid_hours:
     name: Irrigation adjustment validity
     min: 1
     max: 168
     step: 1
-    initial: 30
     unit_of_measurement: h
   irrigation_ai_max_pct:
     name: Irrigation AI maximum adjust
     min: 0
     max: 300
     step: 5
-    initial: 150
     unit_of_measurement: "%"
   irrigation_tariff_per_kl:
     name: Irrigation water tariff per kL
     min: 0
     max: 100
     step: 0.01
-    initial: 3.00
     mode: box
   irrigation_offline_minutes:
     name: Irrigation offline alert delay
     min: 1
     max: 1440
     step: 1
-    initial: 30
     unit_of_measurement: min
   irrigation_last_ts:
     name: Irrigation last synced timestamp
     min: 0
     max: 4000000000
     step: 1
-    initial: 0
     mode: box
   irrigation_last_seq:
     name: Irrigation last synced sequence
     min: 0
     max: 4000000000
     step: 1
-    initial: 0
     mode: box
 
 input_boolean:
   irrigation_wind_enabled:
     name: Irrigation wind rule enabled
-    initial: false
   irrigation_ai_auto_apply:
     name: Irrigation AI auto-apply
-    initial: false
   irrigation_notify_run_started:
     name: Irrigation notify run started
-    initial: false
   irrigation_notify_run_finished:
     name: Irrigation notify run finished
-    initial: true
   irrigation_notify_skipped:
     name: Irrigation notify skipped
-    initial: true
   irrigation_notify_flow_high:
     name: Irrigation notify high flow
-    initial: true
   irrigation_notify_flow_low:
     name: Irrigation notify low flow
-    initial: true
   irrigation_notify_leak:
     name: Irrigation notify leak
-    initial: true
   irrigation_notify_max_runtime:
     name: Irrigation notify runtime limit
-    initial: true
   irrigation_notify_offline:
     name: Irrigation notify offline
-    initial: true
   irrigation_notify_clock_invalid:
     name: Irrigation notify clock invalid
-    initial: true
   irrigation_notify_daily_advice:
     name: Irrigation notify daily advice
-    initial: true
+  # On once script.irrigation_apply_defaults has seeded the defaults.
+  irrigation_defaults_applied:
+    name: Irrigation defaults applied
+    icon: mdi:check-decagram
+
+script:
+  irrigation_apply_defaults:
+    alias: Irrigation apply default settings
+    mode: single
+    sequence:
+      # The replay watermark is seeded only on the first run: resetting it later
+      # would replay (and duplicate) every run still in the device log.
+      - if:
+          - condition: state
+            entity_id: input_boolean.irrigation_defaults_applied
+            state: "off"
+        then:
+          - action: input_number.set_value
+            target:
+              entity_id:
+                - input_number.irrigation_last_ts
+                - input_number.irrigation_last_seq
+            data:
+              value: 0
+      - repeat:
+          for_each:
+            - { entity: input_text.irrigation_weather_entity, value: "weather.home" }
+            - { entity: input_text.irrigation_rain_obs_entity, value: "" }
+            - { entity: input_text.irrigation_ai_entity, value: "" }
+            - { entity: input_text.irrigation_notify_targets, value: "" }
+          sequence:
+            - action: input_text.set_value
+              target:
+                entity_id: "{{ repeat.item.entity }}"
+              data:
+                value: "{{ repeat.item.value }}"
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.irrigation_ai_mode
+        data:
+          option: "Off"
+      - repeat:
+          for_each:
+            - { entity: input_datetime.irrigation_eval_time, value: "03:00:00" }
+            - { entity: input_datetime.irrigation_quiet_start, value: "22:00:00" }
+            - { entity: input_datetime.irrigation_quiet_end, value: "07:00:00" }
+          sequence:
+            - action: input_datetime.set_datetime
+              target:
+                entity_id: "{{ repeat.item.entity }}"
+              data:
+                time: "{{ repeat.item.value }}"
+      - repeat:
+          for_each:
+            - { entity: input_number.irrigation_rain_skip_mm, value: 3.0 }
+            - { entity: input_number.irrigation_rain_prob_pct, value: 80 }
+            - { entity: input_number.irrigation_rain_prob_mm, value: 2.0 }
+            - { entity: input_number.irrigation_cumulative_days, value: 3 }
+            - { entity: input_number.irrigation_cumulative_mm, value: 15 }
+            - { entity: input_number.irrigation_freeze_c, value: 2 }
+            - { entity: input_number.irrigation_wind_kmh, value: 30 }
+            - { entity: input_number.irrigation_cool_c, value: 18 }
+            - { entity: input_number.irrigation_cool_pct, value: 70 }
+            - { entity: input_number.irrigation_hot_c, value: 32 }
+            - { entity: input_number.irrigation_hot_pct, value: 130 }
+            - { entity: input_number.irrigation_valid_hours, value: 30 }
+            - { entity: input_number.irrigation_ai_max_pct, value: 150 }
+            - { entity: input_number.irrigation_tariff_per_kl, value: 3.00 }
+            - { entity: input_number.irrigation_offline_minutes, value: 30 }
+          sequence:
+            - action: input_number.set_value
+              target:
+                entity_id: "{{ repeat.item.entity }}"
+              data:
+                value: "{{ repeat.item.value }}"
+      - action: input_boolean.turn_off
+        target:
+          entity_id:
+            - input_boolean.irrigation_wind_enabled
+            - input_boolean.irrigation_ai_auto_apply
+            - input_boolean.irrigation_notify_run_started
+      - action: input_boolean.turn_on
+        target:
+          entity_id:
+            - input_boolean.irrigation_notify_run_finished
+            - input_boolean.irrigation_notify_skipped
+            - input_boolean.irrigation_notify_flow_high
+            - input_boolean.irrigation_notify_flow_low
+            - input_boolean.irrigation_notify_leak
+            - input_boolean.irrigation_notify_max_runtime
+            - input_boolean.irrigation_notify_offline
+            - input_boolean.irrigation_notify_clock_invalid
+            - input_boolean.irrigation_notify_daily_advice
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.irrigation_defaults_applied
+
+automation:
+  - id: irrigation_seed_defaults
+    alias: Irrigation seed default settings
+    description: Applies the default settings once, on the first HA start after install.
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: state
+        entity_id: input_boolean.irrigation_defaults_applied
+        state: "off"
+    actions:
+      - action: script.irrigation_apply_defaults

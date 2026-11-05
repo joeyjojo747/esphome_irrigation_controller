@@ -47,6 +47,11 @@ async def pkg_hass(hass: HomeAssistant) -> AsyncGenerator[HomeAssistant, None]:
     for domain in DOMAINS:
         if domain in config:
             assert await async_setup_component(hass, domain, {domain: config[domain]}), domain
+        if domain == "script":
+            # Helpers have no `initial` (HA restores them); a fresh install gets its
+            # defaults from this script, run by a start automation. Seed them here,
+            # before the automations attach, so every test starts from the defaults.
+            await hass.services.async_call("script", "irrigation_apply_defaults", {}, blocking=True)
     await hass.async_block_till_done()
     assert await async_setup_component(hass, "system_log", {})  # system_log.write
     yield hass
