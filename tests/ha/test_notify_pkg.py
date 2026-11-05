@@ -13,7 +13,7 @@ TARGETS = "input_text.irrigation_notify_targets"
 
 
 @pytest.fixture(autouse=True)
-def daytime(freezer):
+def daytime(hass, freezer):
     """Outside the default 22:00-07:00 quiet hours unless a test moves the clock."""
     freezer.move_to(local_time(12, 0))
 
@@ -43,6 +43,7 @@ def named_config():
     cfg["zones"][0]["name"] = "Front Lawn"
     cfg["zones"][0]["action"] = 1
     cfg["zones"][1]["name"] = ""
+    cfg["zones"][1]["action"] = 0
     cfg["programs"][1]["name"] = "Lawn"
     cfg["programs"][0]["name"] = ""
     return cfg

@@ -147,7 +147,7 @@ automation:
                     {%- endif -%}
                   # The firmware reports the max_runtime limit in seconds.
                   message: >-
-                    {%- if e.kind == 'flow_high' -%}{{ zname | trim }} flow {{ e.flow | float(0) | round(1) }} L/min is above {{ e.limit | float(0) | round(1) }} L/min. {{ 'Zone stopped' if zone_cfg is mapping and zone_cfg.action | int(0) == 1 else 'Alert only' }}.
+                    {%- if e.kind == 'flow_high' -%}{{ zname | trim }} flow {{ e.flow | float(0) | round(1) }} L/min is above {{ e.limit | float(0) | round(1) }} L/min. {{ 'Zone stopped' if zone_cfg is mapping and zone_cfg.action | default(0) | int(0) == 1 else 'Alert only' }}.
                     {%- elif e.kind == 'flow_low' -%}{{ zname | trim }} flow {{ e.flow | float(0) | round(1) }} L/min is below {{ e.limit | float(0) | round(1) }} L/min. Check the valve, filter or supply.
                     {%- elif e.kind == 'leak' -%}{{ e.flow | float(0) | round(1) }} L/min flowing with no zone running.
                     {%- elif e.kind == 'max_runtime' -%}{{ zname | trim }} ran past its {{ (e.limit | float(0) / 60) | round(0) | int }} min limit and was stopped.
