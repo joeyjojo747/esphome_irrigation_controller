@@ -114,11 +114,19 @@ script:
           - condition: template
             value_template: "{{ res is not mapping or res.error is defined or res.plan is not defined }}"
         then:
+          # Not an error: the start trigger can run before the device connects.
+          - action: system_log.write
+            data:
+              level: warning
+              logger: irrigation
+              message: "Irrigation plan unavailable: {{ res.error if res is mapping and res.error is defined else res }}"
           - stop: Plan unavailable
       - event: irrigation_plan
         event_data:
           plan: "{{ res.plan }}"
 
+# After an HA restart the sensor can stay unknown for up to 30 min if the device
+# is not connected yet (the next scheduled refresh fills it).
 template:
   - triggers:
       - trigger: event

@@ -1,6 +1,7 @@
 """Fixtures: load the irrigation packages into a test HA and mock the outside world."""
 
 import inspect
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
@@ -32,13 +33,7 @@ def load_packages() -> dict:
 
 
 @pytest.fixture
-def expected_lingering_timers() -> bool:
-    """The 30-minute refresh automation time_pattern trigger leaves a timer."""
-    return True
-
-
-@pytest.fixture
-async def pkg_hass(hass: HomeAssistant) -> HomeAssistant:
+async def pkg_hass(hass: HomeAssistant) -> AsyncGenerator[HomeAssistant, None]:
     """A test HA with every irrigation package merged and each domain set up."""
     config: dict = {}
     merged = merge_packages_config(hass, config, load_packages())
@@ -52,7 +47,13 @@ async def pkg_hass(hass: HomeAssistant) -> HomeAssistant:
         if domain in config:
             assert await async_setup_component(hass, domain, {domain: config[domain]}), domain
     await hass.async_block_till_done()
-    return hass
+    assert await async_setup_component(hass, "system_log", {})  # system_log.write
+    yield hass
+    # Cancel the 30-minute time_pattern listener so no timer outlives the test.
+    await hass.services.async_call(
+        "automation", "turn_off",
+        {"entity_id": "automation.irrigation_refresh_upcoming_runs"}, blocking=True)
+    await hass.async_block_till_done()
 
 
 class Stub:

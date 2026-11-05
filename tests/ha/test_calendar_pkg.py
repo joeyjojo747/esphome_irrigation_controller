@@ -145,3 +145,23 @@ async def test_refresh_error_keeps_previous(pkg_hass, device):
     await hass.services.async_call("script", "irrigation_refresh_plan", {}, blocking=True)
     await settle(hass)
     assert plans == []
+
+
+async def test_upcoming_sorted_with_backup_name(pkg_hass, device):
+    hass = pkg_hass
+    await hass.config.async_set_time_zone("Australia/Sydney")
+    hass.bus.async_fire("irrigation_config_backup", {"config": {
+        "programs": [{"program": 2, "name": "Veggies"}], "zones": [], "settings": {}}})
+    await settle(hass)
+    device.respond("get_plan", {"plan": [
+        {"p": 2, "date": "2026-11-04", "start": "05:30", "s": 600, "pct": 100},
+        {"p": 0, "date": "2026-11-03", "start": "18:00", "s": 300, "pct": 90},
+        {"p": 1, "date": "2026-11-03", "start": "06:00", "s": 1200, "pct": 70}]})
+    await hass.services.async_call("script", "irrigation_refresh_plan", {}, blocking=True)
+    await settle(hass)
+    st = hass.states.get("sensor.irrigation_upcoming")
+    runs = st.attributes["runs"]
+    assert [r["name"] for r in runs] == ["Program B", "Program A", "Veggies"]
+    assert [r["start"] for r in runs] == [
+        "2026-11-03T06:00:00+11:00", "2026-11-03T18:00:00+11:00", "2026-11-04T05:30:00+11:00"]
+    assert dt_util.parse_datetime(st.state) == dt_util.parse_datetime(runs[0]["start"])
