@@ -1,17 +1,19 @@
 import time
-from homeassistant.helpers.template import Template
-from conftest import load_packages
+import json
 
 
 async def test_diag(pkg_hass):
     hass = pkg_hass
-    tpl = load_packages()["irrigation_sync"]["template"][0]["variables"]["records"]
     now = int(time.time())
-    data = {"seq": 2, "inst": 1, "p": 0, "z": 1, "ts": now - 86400, "plan": 60, "act": 60, "l": 1.5, "r": "completed"}
-    out = Template(tpl, hass).async_render({"trigger": {"event": {"data": data}}}, parse_result=True)
-    print("RENDER", repr(out))
-    hass.bus.async_fire("irrigation_run_finished", data)
+    def d(seq, ts):
+        return {"seq": seq, "inst": 1, "p": 0, "z": 1, "ts": ts, "plan": 60, "act": 60, "l": 1.5, "r": "completed"}
+    hass.bus.async_fire("irrigation_run_finished", d(1, now - 8 * 86400))
     await hass.async_block_till_done()
-    st = hass.states.get("sensor.irrigation_run_history")
-    print("STATE", st)
+    print("STATE1", hass.states.get("sensor.irrigation_run_history"))
+    hass.bus.async_fire("irrigation_run_finished", d(2, now - 86400))
+    await hass.async_block_till_done()
+    print("STATE2", hass.states.get("sensor.irrigation_run_history"))
+    hass.bus.async_fire("esphome.irrigation_event", {"node": "irrigation-controller", "type": "run_finished", "json": json.dumps(d(3, now - 3600))})
+    await hass.async_block_till_done()
+    print("STATE3", hass.states.get("sensor.irrigation_run_history"))
     assert 0, "diag"
