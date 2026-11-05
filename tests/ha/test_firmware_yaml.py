@@ -332,7 +332,7 @@ def test_program_editor_entity_set():
 def test_response_actions_report_parse_errors():
     acts = _actions()
     for name in RESPONSE_ACTIONS:
-        code = yaml.dump(acts[name]["then"])
+        code = acts[name]["then"][0]["api.respond"]["data"]
         assert 'root["error"]' in code, name
     # the run-log cursor must only be emitted when the records were built
     code = acts["get_run_log"]["then"][0]["api.respond"]["data"]
