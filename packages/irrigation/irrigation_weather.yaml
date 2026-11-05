@@ -40,20 +40,22 @@ automation:
         then:
           - action: script.irrigation_ai_advice
             data:
-              rule: "{{ rule }}"
+              decision: "{{ rule }}"
+              forecast: "{{ rule.forecast }}"
             response_variable: ai
             continue_on_error: true
           - if:
               - condition: template
                 value_template: >-
-                  {{ ai is defined and ai is mapping and ai.pct is defined and ai.pct is not none
-                     and ai.skip is defined }}
+                  {{ ai is defined and ai is mapping and ai.final is mapping
+                     and ai.final.pct is defined and ai.final.pct is number
+                     and ai.final.skip is defined and ai.final.skip is boolean }}
             then:
               - variables:
                   final:
-                    pct: "{{ ai.pct | int(0) }}"
-                    skip: "{{ ai.skip | bool(false) }}"
-                    reason: "{{ ai.reason | default('', true) }}"
+                    pct: "{{ ai.final.pct | round(0) | int }}"
+                    skip: "{{ ai.final.skip }}"
+                    reason: "{{ ai.final.reason | default('', true) }}"
                   ai_applied: true
       - variables:
           valid_hours: "{{ states('input_number.irrigation_valid_hours') | float(30) | round(0) | int }}"
@@ -78,6 +80,7 @@ automation:
     mode: single
     triggers:
       - trigger: time
+        # 08:59: BOM "rain since 9am" resets at 09:00, so this captures the full day.
         at: "08:59:00"
     actions:
       - event: irrigation_rain_snapshot
@@ -104,6 +107,8 @@ script:
         response_variable: fc
         continue_on_error: true
       - variables:
+          fc_list: >-
+            {{ (fc[we].get('forecast') or []) if fc is defined and fc is mapping and fc.get(we) is mapping else [] }}
           today: >-
             {% if fc is defined and fc is mapping and fc.get(we) is mapping %}
               {{ (fc[we].get('forecast') or [none])[0] }}
@@ -112,7 +117,7 @@ script:
           res: >-
             {% set ns = namespace(out=none) %}
             {% if today is not mapping %}
-              {% set ns.out = {'skip': false, 'pct': none, 'reason': 'weather unavailable', 'inputs': {}} %}
+              {% set ns.out = {'skip': false, 'pct': none, 'reason': 'weather unavailable', 'inputs': {}, 'forecast': []} %}
             {% else %}
               {% set tmin = today.templow if today.templow is number else none %}
               {% set tmax = today.temperature if today.temperature is number else none %}
@@ -152,7 +157,8 @@ script:
                 'pct': 0 if reason != '' else factor,
                 'reason': reason,
                 'inputs': {'tmin': tmin, 'tmax': tmax, 'rain_obs': obs_mm | float(0), 'rain_forecast': rain,
-                           'rain_prob': prob, 'wind': wind, 'rain_cumulative': cum_mm, 'cumulative_days': cum_n}
+                           'rain_prob': prob, 'wind': wind, 'rain_cumulative': cum_mm, 'cumulative_days': cum_n},
+                'forecast': fc_list
               } %}
             {% endif %}
             {{ ns.out }}

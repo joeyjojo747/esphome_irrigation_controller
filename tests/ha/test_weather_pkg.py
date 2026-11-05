@@ -187,7 +187,7 @@ async def test_ai_advice_used_when_present(pkg_hass, device, mocks):
 
     async def advice(call):
         seen.append(dict(call.data))
-        return {"pct": 85, "skip": False, "reason": "AI: mild week"}
+        return {"final": {"pct": 85, "skip": False, "reason": "AI: mild week"}, "advice": None}
 
     hass.services.async_register("script", "irrigation_ai_advice", advice,
                                  supports_response=SupportsResponse.OPTIONAL)
@@ -195,6 +195,77 @@ async def test_ai_advice_used_when_present(pkg_hass, device, mocks):
     fc(mocks, temperature=17.0)
     await trigger_daily(hass)
     assert len(seen) == 1
+    assert seen[0]["decision"]["pct"] == 70
+    assert seen[0]["forecast"][0]["temperature"] == 17.0
     assert device.calls["set_weather_adjust"] == [
         {"pct": 85, "skip": False, "reason": "AI: mild week", "valid_hours": 30}]
     assert hass.states.get("sensor.irrigation_weather_decision").attributes["ai_applied"] is True
+
+
+async def register_ai(hass, handler):
+    hass.services.async_register("script", "irrigation_ai_advice", handler,
+                                 supports_response=SupportsResponse.OPTIONAL)
+    hass.states.async_set("script.irrigation_ai_advice", "off")
+
+
+@pytest.mark.parametrize("bad", [
+    {"pct": 85, "skip": False},
+    {"final": {"pct": "abc", "skip": False, "reason": ""}, "advice": None},
+    {"final": {"pct": 85}, "advice": None},
+    {"final": "x"},
+    "nonsense",
+])
+async def test_ai_malformed_falls_back(pkg_hass, device, mocks, bad):
+    hass = pkg_hass
+
+    async def advice(call):
+        return bad
+
+    await register_ai(hass, advice)
+    fc(mocks, temperature=17.0)
+    await trigger_daily(hass)
+    assert device.calls["set_weather_adjust"] == [
+        {"pct": 70, "skip": False, "reason": "", "valid_hours": 30}]
+    assert hass.states.get("sensor.irrigation_weather_decision").attributes["ai_applied"] is False
+
+
+async def test_ai_error_falls_back(pkg_hass, device, mocks):
+    hass = pkg_hass
+
+    async def advice(call):
+        raise HomeAssistantError("boom")
+
+    await register_ai(hass, advice)
+    fc(mocks, temperature=17.0)
+    await trigger_daily(hass)
+    assert device.calls["set_weather_adjust"] == [
+        {"pct": 70, "skip": False, "reason": "", "valid_hours": 30}]
+    assert hass.states.get("sensor.irrigation_weather_decision").attributes["ai_applied"] is False
+
+
+async def test_decision_sensor_when_unavailable(pkg_hass, device, mocks):
+    hass = pkg_hass
+    mocks.weather.side_effect = HomeAssistantError("down")
+    await trigger_daily(hass)
+    st = hass.states.get("sensor.irrigation_weather_decision")
+    assert st.state == "error"
+    assert st.attributes["reason"] == "weather unavailable"
+    assert st.attributes["ai_applied"] is False
+    assert st.attributes["pushed_at"] is None
+
+
+async def test_missing_forecast_values_give_no_rule(pkg_hass, mocks):
+    hass = pkg_hass
+    await hass.services.async_call(
+        "input_boolean", "turn_on", {"entity_id": "input_boolean.irrigation_wind_enabled"},
+        blocking=True)
+    fc(mocks, templow=None, temperature=None, precipitation=None,
+       precipitation_probability=None, wind_speed=None)
+    r = await evaluate(hass)
+    assert r["skip"] is False and r["pct"] == 100 and r["reason"] == ""
+    assert len(r["forecast"]) == 1
+
+
+async def test_evaluate_forecast_empty_when_unavailable(pkg_hass, mocks):
+    mocks.weather.side_effect = HomeAssistantError("down")
+    assert (await evaluate(pkg_hass))["forecast"] == []
