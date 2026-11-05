@@ -795,6 +795,8 @@ views:
               data:
                 zone: 1
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 1?
           - type: button
             name: Apply 2
             icon: mdi:check-circle-outline
@@ -804,6 +806,8 @@ views:
               data:
                 zone: 2
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 2?
           - type: button
             name: Apply 3
             icon: mdi:check-circle-outline
@@ -813,6 +817,8 @@ views:
               data:
                 zone: 3
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 3?
           - type: button
             name: Apply 4
             icon: mdi:check-circle-outline
@@ -822,6 +828,8 @@ views:
               data:
                 zone: 4
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 4?
           - type: button
             name: Apply 5
             icon: mdi:check-circle-outline
@@ -831,6 +839,8 @@ views:
               data:
                 zone: 5
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 5?
           - type: button
             name: Apply 6
             icon: mdi:check-circle-outline
@@ -840,6 +850,8 @@ views:
               data:
                 zone: 6
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 6?
           - type: button
             name: Apply 7
             icon: mdi:check-circle-outline
@@ -849,6 +861,8 @@ views:
               data:
                 zone: 7
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 7?
           - type: button
             name: Apply 8
             icon: mdi:check-circle-outline
@@ -858,6 +872,8 @@ views:
               data:
                 zone: 8
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 8?
           - type: button
             name: Apply 9
             icon: mdi:check-circle-outline
@@ -867,6 +883,8 @@ views:
               data:
                 zone: 9
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 9?
           - type: button
             name: Apply 10
             icon: mdi:check-circle-outline
@@ -876,6 +894,8 @@ views:
               data:
                 zone: 10
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 10?
           - type: button
             name: Apply 11
             icon: mdi:check-circle-outline
@@ -885,6 +905,8 @@ views:
               data:
                 zone: 11
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 11?
           - type: button
             name: Apply 12
             icon: mdi:check-circle-outline
@@ -894,6 +916,8 @@ views:
               data:
                 zone: 12
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 12?
           - type: button
             name: Apply 13
             icon: mdi:check-circle-outline
@@ -903,6 +927,8 @@ views:
               data:
                 zone: 13
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 13?
           - type: button
             name: Apply 14
             icon: mdi:check-circle-outline
@@ -912,6 +938,8 @@ views:
               data:
                 zone: 14
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 14?
           - type: button
             name: Apply 15
             icon: mdi:check-circle-outline
@@ -921,6 +949,8 @@ views:
               data:
                 zone: 15
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 15?
           - type: button
             name: Apply 16
             icon: mdi:check-circle-outline
@@ -930,6 +960,8 @@ views:
               data:
                 zone: 16
                 apply: true
+              confirmation:
+                text: Write the suggested cycle and soak times to zone 16?
   # ---------------------------------------------------------------- water
   - title: Water
     path: water
