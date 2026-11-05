@@ -1,0 +1,22 @@
+# Irrigation controller: site plan helper.
+# ha-floorplan injects entity_id into call-service data, and the ESPHome action has a strict
+# schema, so the floorplan card calls this script instead. Extra variables (entity_id) are ignored.
+# Entity ids depend on the device name "irrigation-controller": do not change it.
+
+script:
+  irrigation_siteplan_run_zone:
+    alias: Irrigation site plan run zone
+    mode: queued
+    max: 5
+    fields:
+      zone:
+        description: Zone number
+        example: 1
+      minutes:
+        description: Minutes to run
+        example: 5
+    sequence:
+      - action: esphome.irrigation_controller_run_zone
+        data:
+          zone: "{{ zone | int }}"
+          minutes: "{{ minutes | int }}"

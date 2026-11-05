@@ -12,7 +12,7 @@
   </defs>
 
   <g id="layer-background" inkscape:groupmode="layer" inkscape:label="Background">
-    <image id="satellite" href="satellite.jpg" x="0" y="0" width="1600" height="1000" preserveAspectRatio="xMidYMid slice"/>
+    <image id="satellite" href="/local/irrigation/satellite.jpg" x="0" y="0" width="1600" height="1000" preserveAspectRatio="xMidYMid slice"/>
   </g>
 
   <g id="layer-zones" inkscape:groupmode="layer" inkscape:label="Zones">

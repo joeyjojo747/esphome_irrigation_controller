@@ -18,15 +18,14 @@ config:
       tap_action:
         action: more-info
       hover_action:
-        action: more-info
-      tooltip_filter: ${entity.state}
+        action: hover-info
     - entities:
         - switch.irrigation_zone_1
         - binary_sensor.irrigation_flow_alarm
       element: zone-01
       tap_action:
         action: call-service
-        service: esphome.irrigation_controller_run_zone
+        service: script.irrigation_siteplan_run_zone
         service_data:
           zone: 1
           minutes: 5
@@ -47,7 +46,7 @@ config:
       element: zone-02
       tap_action:
         action: call-service
-        service: esphome.irrigation_controller_run_zone
+        service: script.irrigation_siteplan_run_zone
         service_data:
           zone: 2
           minutes: 5
@@ -68,7 +67,7 @@ config:
       element: zone-03
       tap_action:
         action: call-service
-        service: esphome.irrigation_controller_run_zone
+        service: script.irrigation_siteplan_run_zone
         service_data:
           zone: 3
           minutes: 5
@@ -89,7 +88,7 @@ config:
       element: zone-04
       tap_action:
         action: call-service
-        service: esphome.irrigation_controller_run_zone
+        service: script.irrigation_siteplan_run_zone
         service_data:
           zone: 4
           minutes: 5
@@ -110,7 +109,7 @@ config:
       element: zone-05
       tap_action:
         action: call-service
-        service: esphome.irrigation_controller_run_zone
+        service: script.irrigation_siteplan_run_zone
         service_data:
           zone: 5
           minutes: 5
@@ -131,7 +130,7 @@ config:
       element: zone-06
       tap_action:
         action: call-service
-        service: esphome.irrigation_controller_run_zone
+        service: script.irrigation_siteplan_run_zone
         service_data:
           zone: 6
           minutes: 5
