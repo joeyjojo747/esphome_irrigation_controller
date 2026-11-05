@@ -50,7 +50,7 @@ def test_required_layers():
         assert layer in ids and _local(ids[layer].tag) == "g", layer
     img = ids["satellite"]
     assert _local(img.tag) == "image"
-    assert img.get("href") == "satellite.jpg"
+    assert img.get("href") == "/local/irrigation/satellite.jpg"
     assert "legend" in ids
     assert "controller-1" in ids
 
@@ -115,7 +115,7 @@ def test_floorplan_rules_cover_every_zone_in_svg():
         for cls in ("zone-running", "zone-idle", "zone-alarm", "zone-disabled"):
             assert cls in text
         tap = next(r["tap_action"] for r in rules if "tap_action" in r)
-        assert tap["service"] == "esphome.irrigation_controller_run_zone"
+        assert tap["service"] == "script.irrigation_siteplan_run_zone"
         assert tap["service_data"] == {"zone": n, "minutes": 5}
         assert tap.get("confirmation")
 
@@ -127,6 +127,9 @@ def test_floorplan_controller_tooltip_and_card():
     assert fp["config"]["stylesheet"].endswith("/irrigation/siteplan.css")
     rules = [r for r in _rules() if r.get("element") == "controller-1"]
     assert rules and "sensor.irrigation_status" in yaml.dump(rules)
+    assert rules[0]["tap_action"]["action"] == "more-info"
+    assert rules[0]["hover_action"]["action"] == "hover-info"
+    assert "tooltip_filter" not in yaml.dump(rules)
 
 
 def test_install_doc_has_site_plan_section():
