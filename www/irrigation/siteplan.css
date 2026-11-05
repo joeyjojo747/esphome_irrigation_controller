@@ -1,0 +1,32 @@
+/* Styles for siteplan.svg, applied by ha-floorplan (floorplan.class_set). */
+
+/* Zone state */
+.zone-idle     { fill: #2196f3; fill-opacity: 0.25; stroke: #1565c0; stroke-width: 2; cursor: pointer; }
+.zone-running  { fill: #1e88e5; fill-opacity: 0.6;  stroke: #0d47a1; stroke-width: 3; cursor: pointer;
+                 animation: zone-pulse 1.6s ease-in-out infinite; }
+.zone-disabled { fill: url(#hatch); stroke: #616161; stroke-width: 2; stroke-dasharray: 8 6; cursor: not-allowed; }
+.zone-alarm    { fill: #e53935; fill-opacity: 0.55; stroke: #b71c1c; stroke-width: 3; cursor: pointer;
+                 animation: zone-alarm 0.8s ease-in-out infinite; }
+
+@keyframes zone-pulse {
+  0%, 100% { fill-opacity: 0.35; }
+  50%      { fill-opacity: 0.75; }
+}
+@keyframes zone-alarm {
+  0%, 100% { fill-opacity: 0.45; }
+  50%      { fill-opacity: 0.8; }
+}
+
+/* Head colours, one per type */
+.head-spray   { fill: #29b6f6; stroke: #01579b; stroke-width: 2; }
+.head-rotor   { fill: #66bb6a; stroke: #1b5e20; stroke-width: 2; }
+.head-rotor path { fill: none; }
+.head-rotator { fill: #ffa726; stroke: #e65100; stroke-width: 2; }
+.head-drip    { fill: none; stroke: #8d6e63; stroke-width: 4; stroke-dasharray: 8 5; }
+.head-bubbler { fill: #ab47bc; stroke: #4a148c; stroke-width: 2; }
+
+/* Controller and legend */
+.controller rect { fill: #37474f; stroke: #fff; stroke-width: 2; cursor: help; }
+.controller text { fill: #fff; font: bold 20px sans-serif; }
+.legend-bg { fill: #fff; fill-opacity: 0.85; stroke: #455a64; }
+#legend text { font: 14px sans-serif; fill: #263238; }

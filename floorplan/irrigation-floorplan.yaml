@@ -1,0 +1,148 @@
+# ha-floorplan (HACS: ExperienceLovelace/ha-floorplan) card for the irrigation site plan.
+# Copy www/irrigation/ to /config/www/irrigation/ (served as /local/irrigation/), then add this
+# as a card on the dashboard Site plan view. Rule syntax follows ha-floorplan v1.x.
+#
+# The Active Zone sensor holds the zone NAME (or None), not a number, so the alarm test uses
+# each zone own switch: switch on + flow alarm on == this is the active zone, and it is in alarm.
+#   switch unavailable/unknown -> zone-disabled
+#   switch on + flow alarm on  -> zone-alarm
+#   switch on                  -> zone-running
+#   otherwise                  -> zone-idle
+type: custom:floorplan-card
+config:
+  image: /local/irrigation/siteplan.svg
+  stylesheet: /local/irrigation/siteplan.css
+  rules:
+    - entity: sensor.irrigation_status
+      element: controller-1
+      tap_action:
+        action: more-info
+      hover_action:
+        action: more-info
+      tooltip_filter: ${entity.state}
+    - entities:
+        - switch.irrigation_zone_1
+        - binary_sensor.irrigation_flow_alarm
+      element: zone-01
+      tap_action:
+        action: call-service
+        service: esphome.irrigation_controller_run_zone
+        service_data:
+          zone: 1
+          minutes: 5
+        confirmation:
+          text: Run zone 1 for 5 minutes?
+      state_action:
+        action: call-service
+        service: floorplan.class_set
+        service_data:
+          class: >-
+            ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_1'].state) ? 'zone-disabled' :
+            hass.states['switch.irrigation_zone_1'].state === 'on' ?
+            (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+            'zone-idle'}
+    - entities:
+        - switch.irrigation_zone_2
+        - binary_sensor.irrigation_flow_alarm
+      element: zone-02
+      tap_action:
+        action: call-service
+        service: esphome.irrigation_controller_run_zone
+        service_data:
+          zone: 2
+          minutes: 5
+        confirmation:
+          text: Run zone 2 for 5 minutes?
+      state_action:
+        action: call-service
+        service: floorplan.class_set
+        service_data:
+          class: >-
+            ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_2'].state) ? 'zone-disabled' :
+            hass.states['switch.irrigation_zone_2'].state === 'on' ?
+            (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+            'zone-idle'}
+    - entities:
+        - switch.irrigation_zone_3
+        - binary_sensor.irrigation_flow_alarm
+      element: zone-03
+      tap_action:
+        action: call-service
+        service: esphome.irrigation_controller_run_zone
+        service_data:
+          zone: 3
+          minutes: 5
+        confirmation:
+          text: Run zone 3 for 5 minutes?
+      state_action:
+        action: call-service
+        service: floorplan.class_set
+        service_data:
+          class: >-
+            ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_3'].state) ? 'zone-disabled' :
+            hass.states['switch.irrigation_zone_3'].state === 'on' ?
+            (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+            'zone-idle'}
+    - entities:
+        - switch.irrigation_zone_4
+        - binary_sensor.irrigation_flow_alarm
+      element: zone-04
+      tap_action:
+        action: call-service
+        service: esphome.irrigation_controller_run_zone
+        service_data:
+          zone: 4
+          minutes: 5
+        confirmation:
+          text: Run zone 4 for 5 minutes?
+      state_action:
+        action: call-service
+        service: floorplan.class_set
+        service_data:
+          class: >-
+            ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_4'].state) ? 'zone-disabled' :
+            hass.states['switch.irrigation_zone_4'].state === 'on' ?
+            (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+            'zone-idle'}
+    - entities:
+        - switch.irrigation_zone_5
+        - binary_sensor.irrigation_flow_alarm
+      element: zone-05
+      tap_action:
+        action: call-service
+        service: esphome.irrigation_controller_run_zone
+        service_data:
+          zone: 5
+          minutes: 5
+        confirmation:
+          text: Run zone 5 for 5 minutes?
+      state_action:
+        action: call-service
+        service: floorplan.class_set
+        service_data:
+          class: >-
+            ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_5'].state) ? 'zone-disabled' :
+            hass.states['switch.irrigation_zone_5'].state === 'on' ?
+            (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+            'zone-idle'}
+    - entities:
+        - switch.irrigation_zone_6
+        - binary_sensor.irrigation_flow_alarm
+      element: zone-06
+      tap_action:
+        action: call-service
+        service: esphome.irrigation_controller_run_zone
+        service_data:
+          zone: 6
+          minutes: 5
+        confirmation:
+          text: Run zone 6 for 5 minutes?
+      state_action:
+        action: call-service
+        service: floorplan.class_set
+        service_data:
+          class: >-
+            ${['unavailable', 'unknown'].includes(hass.states['switch.irrigation_zone_6'].state) ? 'zone-disabled' :
+            hass.states['switch.irrigation_zone_6'].state === 'on' ?
+            (hass.states['binary_sensor.irrigation_flow_alarm'].state === 'on' ? 'zone-alarm' : 'zone-running') :
+            'zone-idle'}
