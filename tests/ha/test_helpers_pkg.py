@@ -97,6 +97,7 @@ def test_seed_runs_on_homeassistant_start_only_when_flag_off():
 
 
 async def _run_seed(hass):
+    assert hass.states.get(SEED) is not None, SEED
     # skip_condition False: the flag condition is evaluated as on a real start.
     await hass.services.async_call(
         "automation", "trigger", {"entity_id": SEED, "skip_condition": False}, blocking=True)

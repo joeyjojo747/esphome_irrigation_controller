@@ -275,7 +275,7 @@ script:
 
 automation:
   - id: irrigation_seed_defaults
-    alias: Irrigation seed default settings
+    alias: Irrigation seed defaults
     description: Applies the default settings once, on the first HA start after install.
     mode: single
     triggers:
