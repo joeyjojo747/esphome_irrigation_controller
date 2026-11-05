@@ -1,6 +1,6 @@
 # Install checklist
 
-A short, ordered checklist. The long version with explanations is `docs/install.md`.
+A short, ordered checklist. The long version with explanations is [docs/install.md](https://github.com/joeyjojo747/esphome_irrigation_controller/blob/main/docs/install.md) on GitHub.
 Every step ends with a **Check:** line: do not continue until it is true.
 
 **Rotate secrets before the first flash.** If an API key or OTA password for this device was ever

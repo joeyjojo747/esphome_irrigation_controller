@@ -146,7 +146,9 @@ dashboard in eight steps, each with a check. The longer guide is in [docs/instal
 ## Updating
 
 - **Firmware:** bump `version` in the wrapper (`esphome/irrigation-controller.yaml`) and click
-  Install in the ESPHome Device Builder. The update goes over Wi-Fi.
+  Install in the ESPHome Device Builder. The update goes over Wi-Fi. With a local install
+  (Option A), first copy the new `esphome/irrigation-controller/` folder over the old one in
+  `/config/esphome/`; with remote packages (Option B), point the ref at the new release tag.
 - **Home Assistant packages:** copy the new `packages/irrigation/` over the old one and restart
   Home Assistant.
 
