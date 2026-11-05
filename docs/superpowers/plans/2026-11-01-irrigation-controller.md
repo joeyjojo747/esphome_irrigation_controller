@@ -633,7 +633,7 @@ irrigation_core:
     - `std::string plan_json(int days); std::string runlog_json(uint32_t since_seq);`
     - `std::string config_json();`: programs, zones and settings, with keys equal to the `set_program` / `set_zone` / `set_settings` argument names and units (Task 8): minutes, not seconds, and `days_until_first` computed as `(anchor − today) mod interval_days`.
     - `name` comes from the name texts (`program_name_texts`, `zone_name_texts`).
-    - Outputs are emitted as `output_label` strings (`"output":"GPIO 1"`, `"master_output":"GPIO 21"`), so backup and restore round-trip through `set_program`, `set_zone` and `set_settings` unchanged.
+    - Outputs are emitted as `output_label` strings (`"zone_output":"GPIO 1"`, `"master_output":"GPIO 21"`), so backup and restore round-trip through `set_program`, `set_zone` and `set_settings` unchanged.
   - Status getters:
     - `bool clock_valid() const; bool rain_hold() const; std::string status_text() const;`
     - `status_text` is one of `Idle`, `Watering <zone> (<program>)`, `Soaking`, `Rain delay`, `Rain hold`, `Clock not set`, `Disabled`.
@@ -813,7 +813,7 @@ irrigation_core:
   - `rain_delay(hours:int)`
   - `set_weather_adjust(pct:int, skip:bool, reason:string, valid_hours:int)`
   - `set_program(program:int, name:string, enabled:bool, mode:int, weekday_mask:int, interval_days:int, days_until_first:int, starts:int[] (minutes, -1 unused), zone_minutes:int[], seasonal_pct:int, cycle_soak:bool, weather_adjust:bool)`
-  - `set_zone(zone:int 1-based, name:string, enabled:bool, head:int, precip:float, soil:int, slope:int, sun:int, plant:int, area:float, max_cycle_min:int, soak_min:int, baseline:float, high_pct:int, low_pct:int, action:int, output:string)`: `output` is an `output_label`; `""` leaves the output unchanged. A validation error rejects the whole call (WARN, `Last Error` set, nothing changed).
+  - `set_zone(zone:int 1-based, name:string, enabled:bool, head:int, precip:float, soil:int, slope:int, sun:int, plant:int, area:float, max_cycle_min:int, soak_min:int, baseline:float, high_pct:int, low_pct:int, action:int, zone_output:string)`: `zone_output` (ESPHome reserves `output` as an action variable name) is an `output_label`; `""` leaves the output unchanged. A validation error rejects the whole call (WARN, `Last Error` set, nothing changed).
   - `set_settings(zone_count:int, controller_enabled:bool, monthly_pct:int[] (12), pulses_per_litre:float, leak_lpm:float, settle_s:int, rain_type:int, mm_per_tip:float, rain_skip_mm:float, rain_stops:bool, hard_cap_min:int, start_short_fn:int, start_long_fn:int, stop_short_fn:int, stop_long_fn:int, button_program:int, master_output:string, relay_active_high:bool)`: a `monthly_pct` array that isn't 12 long, or an invalid `master_output`, rejects the whole call (WARN, `Last Error` set, nothing changed), the same as `set_zone`.
   - Response actions (`supports_response: only`): `get_plan(days:int)` → `{"plan": <plan_json>}`, `get_run_log(since:int)` → `{"records": <runlog_json>, "last": N}`, `get_config()` → `<config_json>`.
   - Out-of-range arguments are clamped, and they are logged at WARN.
@@ -938,7 +938,7 @@ irrigation_core:
   - Trigger template sensor `sensor.irrigation_config_backup`: state = backup time, attribute `config` = the JSON object. It is restored across restarts and included in HA backups.
   - `config` keys equal the action argument names and units (Task 6 `config_json`), so values pass straight through.
   - Script `irrigation_restore_config` copies `config` into a variable at start, replays it in this order, and calls `irrigation_backup_config` once at the end:
-    1. `set_zone` ×16 with the full backup values but `output: "None"`
+    1. `set_zone` ×16 with the full backup values but `zone_output: "None"`
     2. `set_settings`
     3. `set_program` ×8
     4. `set_zone` ×16 with full values
