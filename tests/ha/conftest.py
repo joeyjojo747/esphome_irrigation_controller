@@ -55,7 +55,8 @@ async def pkg_hass(hass: HomeAssistant) -> AsyncGenerator[HomeAssistant, None]:
         "automation", "turn_off",
         {"entity_id": ["automation.irrigation_refresh_upcoming_runs",
                        "automation.irrigation_daily_adjust",
-                       "automation.irrigation_rain_snapshot"]}, blocking=True)
+                       "automation.irrigation_rain_snapshot",
+                       "automation.irrigation_notifications"]}, blocking=True)
     await hass.async_block_till_done()
     # utility_meter schedules its next period reset with a point-in-time timer; remove
     # only that integration's entities so the timers are cancelled.

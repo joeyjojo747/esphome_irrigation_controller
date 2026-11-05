@@ -1,0 +1,170 @@
+# Irrigation controller: configurable notifications.
+# script.irrigation_notify applies the per-category switches, quiet hours and the
+# notify targets (input_text.irrigation_notify_targets, comma separated service
+# names such as mobile_app_phone). The automation maps device events to the copy
+# in the design (section 8). Entity ids depend on the device name
+# "irrigation-controller": do not change it.
+
+script:
+  irrigation_notify:
+    alias: Irrigation notify
+    mode: queued
+    max: 20
+    fields:
+      category:
+        description: run_started, run_finished, skipped, flow_high, flow_low, leak, max_runtime, offline, clock_invalid or daily_advice
+        example: flow_high
+      title:
+        description: Notification title
+      message:
+        description: Notification message
+    variables:
+      critical: "{{ category in ['flow_high', 'leak', 'max_runtime'] }}"
+      quiet: >-
+        {% set s = states('input_datetime.irrigation_quiet_start') %}
+        {% set e = states('input_datetime.irrigation_quiet_end') %}
+        {% set t = now().strftime('%H:%M:%S') %}
+        {% if s in ['unknown', 'unavailable'] or e in ['unknown', 'unavailable'] or s == e %}{% set q = false %}{% elif s < e %}{% set q = s <= t < e %}{% else %}{% set q = t >= s or t < e %}{% endif %}{{ q }}
+      names: >-
+        {% set ns = namespace(out=[]) %}
+        {% for n in (states('input_text.irrigation_notify_targets') | regex_replace('[,;\\s]+', ',')).split(',') %}
+          {% set nm = n | trim | replace('notify.', '') %}
+          {% if nm != '' and nm not in ns.out %}{% set ns.out = ns.out + [nm] %}{% endif %}
+        {% endfor %}
+        {{ ns.out }}
+    sequence:
+      - condition: template
+        value_template: >-
+          {{ is_state('input_boolean.irrigation_notify_' ~ category, 'on')
+             and (critical or not quiet | bool(false)) }}
+      - repeat:
+          for_each: "{{ names }}"
+          sequence:
+            - action: "notify.{{ repeat.item }}"
+              continue_on_error: true
+              data: >-
+                {% set d = {'title': title, 'message': message} %}
+                {% if critical and repeat.item.startswith('mobile_app_') %}
+                  {% set d = dict(d, data={'push': {'interruption-level': 'critical'}}) %}
+                {% endif %}
+                {{ d }}
+
+automation:
+  - id: irrigation_notifications
+    alias: Irrigation notifications
+    mode: queued
+    max: 50
+    triggers:
+      - trigger: event
+        event_type: irrigation_program_started
+        id: started
+      - trigger: event
+        event_type: irrigation_program_finished
+        id: finished
+      - trigger: event
+        event_type: irrigation_skipped
+        id: skipped
+      - trigger: event
+        event_type: irrigation_alert
+        id: alert
+      - trigger: event
+        event_type: irrigation_advice
+        id: advice
+      - trigger: state
+        entity_id: sensor.irrigation_status
+        to: unavailable
+        for:
+          minutes: "{{ states('input_number.irrigation_offline_minutes') | int(30) }}"
+        id: offline
+    variables:
+      e: "{{ trigger.event.data if trigger.event is defined else {} }}"
+      cfg: "{{ state_attr('sensor.irrigation_config_backup', 'config') }}"
+      zones: "{{ cfg.zones if cfg is mapping and cfg.zones is defined else [] }}"
+      progs: "{{ cfg.programs if cfg is mapping and cfg.programs is defined else [] }}"
+      # Events carry 0-based indices; the backup config numbers zones from 1.
+      zi: "{{ e.z | int(255) if e.z is defined else 255 }}"
+      zone_cfg: >-
+        {% set ns = namespace(z={}) %}
+        {% for q in zones %}
+          {% if q.zone | int(-1) == zi + 1 %}{% set ns.z = q %}{% endif %}
+        {% endfor %}
+        {{ ns.z }}
+      zname: >-
+        {% set n = (zone_cfg.name | default('', true)) | string | trim if zone_cfg is mapping else '' %}
+        {% if n != '' %}{{ n }}{% else %}Zone {{ zi + 1 }}{% endif %}
+      p: "{{ e.p | int(0) if e.p is defined else 0 }}"
+      pname: >-
+        {% set ns = namespace(n='') %}
+        {% for q in progs %}
+          {% if q.program | int(-1) == p %}{% set ns.n = (q.name | default('', true)) | string | trim %}{% endif %}
+        {% endfor %}
+        {% if p == 255 %}Manual
+        {% elif ns.n != '' %}{{ ns.n }}
+        {% else %}Program {{ 'ABCDEFGH'[p] if 0 <= p < 8 else p }}
+        {% endif %}
+      skip_labels:
+        skipped_rain_sensor: rain sensor
+        skipped_rain_delay: rain delay
+        skipped_weather: weather
+        skipped_controller_off: controller off
+    actions:
+      - choose:
+          - conditions: "{{ trigger.id == 'started' }}"
+            sequence:
+              - action: script.irrigation_notify
+                data:
+                  category: run_started
+                  title: Irrigation started
+                  message: >-
+                    {{ pname | trim }} started: {{ e.zones | int(0) }} zones, about {{ (e.plan | int(0) / 60) | round(0) | int }} min ({{ e.pct | int(0) }}%).
+          - conditions: "{{ trigger.id == 'finished' }}"
+            sequence:
+              - action: script.irrigation_notify
+                data:
+                  category: run_finished
+                  title: Irrigation finished
+                  message: >-
+                    {{ pname | trim }} finished: {{ (e.act | int(0) / 60) | round(0) | int }} min, {{ e.l | float(0) | round(0) | int }} L, ${{ '%.2f' | format(e.l | float(0) * states('input_number.irrigation_tariff_per_kl') | float(0) / 1000) }}.
+          - conditions: "{{ trigger.id == 'skipped' }}"
+            sequence:
+              - action: script.irrigation_notify
+                data:
+                  category: skipped
+                  title: Irrigation skipped
+                  message: >-
+                    {{ pname | trim }} skipped: {{ skip_labels[e.r | string] if e.r | string in skip_labels else (e.r | string | replace('skipped_', '') | replace('_', ' ')) }}.
+          - conditions: "{{ trigger.id == 'alert' and e.kind | string in ['flow_high', 'flow_low', 'leak', 'max_runtime', 'clock_invalid'] }}"
+            sequence:
+              - action: script.irrigation_notify
+                data:
+                  category: "{{ e.kind }}"
+                  title: >-
+                    {%- if e.kind == 'flow_high' -%}High flow — {{ zname | trim }}
+                    {%- elif e.kind == 'flow_low' -%}Low flow — {{ zname | trim }}
+                    {%- elif e.kind == 'leak' -%}Possible leak
+                    {%- elif e.kind == 'max_runtime' -%}Zone stopped — runtime limit
+                    {%- else -%}Irrigation clock not set
+                    {%- endif -%}
+                  # The firmware reports the max_runtime limit in seconds.
+                  message: >-
+                    {%- if e.kind == 'flow_high' -%}{{ zname | trim }} flow {{ e.flow | float(0) | round(1) }} L/min is above {{ e.limit | float(0) | round(1) }} L/min. {{ 'Zone stopped' if zone_cfg is mapping and zone_cfg.action | int(0) == 1 else 'Alert only' }}.
+                    {%- elif e.kind == 'flow_low' -%}{{ zname | trim }} flow {{ e.flow | float(0) | round(1) }} L/min is below {{ e.limit | float(0) | round(1) }} L/min. Check the valve, filter or supply.
+                    {%- elif e.kind == 'leak' -%}{{ e.flow | float(0) | round(1) }} L/min flowing with no zone running.
+                    {%- elif e.kind == 'max_runtime' -%}{{ zname | trim }} ran past its {{ (e.limit | float(0) / 60) | round(0) | int }} min limit and was stopped.
+                    {%- else -%}Scheduled watering is paused until the controller clock is set.
+                    {%- endif -%}
+          - conditions: "{{ trigger.id == 'advice' and e.advice is mapping and e.advice.summary | default('', true) | string | trim != '' }}"
+            sequence:
+              - action: script.irrigation_notify
+                data:
+                  category: daily_advice
+                  title: Irrigation outlook
+                  message: "{{ e.advice.summary if e.advice is mapping and e.advice.summary is defined else '' }}"
+          - conditions: "{{ trigger.id == 'offline' }}"
+            sequence:
+              - action: script.irrigation_notify
+                data:
+                  category: offline
+                  title: Irrigation controller offline
+                  message: >-
+                    No contact for {{ states('input_number.irrigation_offline_minutes') | int(30) }} min. Schedules keep running on the controller.
