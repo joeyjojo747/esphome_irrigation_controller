@@ -187,7 +187,7 @@ async def test_ai_advice_used_when_present(pkg_hass, device, mocks):
 
     async def advice(call):
         seen.append(dict(call.data))
-        return {"final": {"pct": 85, "skip": False, "reason": "AI: mild week"}, "advice": None}
+        return {"final": {"pct": 85, "skip": False, "reason": "AI: mild week", "applied": True}, "advice": None}
 
     hass.services.async_register("script", "irrigation_ai_advice", advice,
                                  supports_response=SupportsResponse.OPTIONAL)

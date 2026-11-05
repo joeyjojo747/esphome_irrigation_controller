@@ -155,7 +155,7 @@ async def test_never_overrides_skip(pkg_hass, mocks):
     await setup_ai(hass, auto=True)
     task_reply(mocks, dict(OK, recommended_pct=150))
     r = await advise(hass, rule(0, True, "Frost risk 1.0°C"))
-    assert r["final"] == {"skip": True, "pct": 0, "reason": "Frost risk 1.0°C"}
+    assert r["final"] == {"skip": True, "pct": 0, "reason": "Frost risk 1.0°C", "applied": False}
     assert r["advice"]["recommended_pct"] == 150
 
 
@@ -166,7 +166,7 @@ async def test_bounds(pkg_hass, mocks, pct, ai, max_pct, expected):
     await setup_ai(hass, auto=True, max_pct=max_pct)
     task_reply(mocks, dict(OK, recommended_pct=ai))
     r = await advise(hass, rule(pct))
-    assert r["final"] == {"skip": False, "pct": expected, "reason": ""}
+    assert r["final"] == {"skip": False, "pct": expected, "reason": "", "applied": True}
     assert isinstance(r["final"]["pct"], int)
 
 
@@ -175,7 +175,7 @@ async def test_auto_apply_off_unchanged(pkg_hass, mocks):
     await setup_ai(hass, auto=False)
     task_reply(mocks, dict(OK, recommended_pct=120))
     r = await advise(hass, rule(100))
-    assert r["final"] == {"skip": False, "pct": 100, "reason": ""}
+    assert r["final"] == {"skip": False, "pct": 100, "reason": "", "applied": False}
     assert r["advice"]["recommended_pct"] == 120
 
 
@@ -184,7 +184,7 @@ async def test_no_ai_pct_unchanged(pkg_hass, mocks):
     await setup_ai(hass, auto=True)
     task_reply(mocks, {"summary": "Fine."})
     r = await advise(hass, rule(100))
-    assert r["final"] == {"skip": False, "pct": 100, "reason": ""}
+    assert r["final"] == {"skip": False, "pct": 100, "reason": "", "applied": False}
     assert r["advice"]["summary"] == "Fine."
     assert r["advice"]["recommended_pct"] is None
 
@@ -263,3 +263,55 @@ async def test_daily_adjust_uses_real_script(pkg_hass, device, mocks):
     assert device.calls["set_weather_adjust"] == [
         {"pct": 100, "skip": False, "reason": "", "valid_hours": 30}]
     assert hass.states.get("sensor.irrigation_weather_decision").attributes["ai_applied"] is True
+
+
+async def run_daily(hass, device, mocks, rule_day):
+    mocks.weather.response = {"weather.home": {"forecast": [rule_day]}}
+    await hass.services.async_call(
+        "automation", "trigger", {"entity_id": "automation.irrigation_daily_adjust"},
+        blocking=True)
+    await settle(hass)
+
+
+@pytest.mark.parametrize("auto,reply,rday", [
+    (False, dict(OK, recommended_pct=110), day(temperature=17.0)),  # auto-apply off
+    (True, dict(OK, recommended_pct=110), day(templow=1.0)),  # rule skip
+    (True, {"summary": "Fine."}, day(temperature=17.0)),  # advice without pct
+])
+async def test_ai_applied_false_when_not_replaced(pkg_hass, device, mocks, auto, reply, rday):
+    hass = pkg_hass
+    await setup_ai(hass, auto=auto)
+    task_reply(mocks, reply)
+    await run_daily(hass, device, mocks, rday)
+    assert len(device.calls["set_weather_adjust"]) == 1
+    assert hass.states.get("sensor.irrigation_weather_decision").attributes["ai_applied"] is False
+
+
+async def test_failure_logged_not_raised(pkg_hass, mocks, caplog):
+    hass = pkg_hass
+    await setup_ai(hass)
+    mocks.ai_task.side_effect = HomeAssistantError("down")
+    r = await advise(hass)
+    assert r == {"final": None, "advice": None}
+    await settle(hass)
+    assert "AI advice unavailable" in caplog.text
+    assert "AI Task" in caplog.text
+
+
+async def test_off_not_logged(pkg_hass, mocks, caplog):
+    hass = pkg_hass
+    await setup_ai(hass, "Off")
+    await advise(hass)
+    await settle(hass)
+    assert "AI advice unavailable" not in caplog.text
+
+
+async def test_numeric_summary_stays_string(pkg_hass, mocks):
+    hass = pkg_hass
+    await setup_ai(hass)
+    task_reply(mocks, dict(OK, summary="12345"))
+    events = async_capture_events(hass, "irrigation_advice")
+    await advise(hass)
+    await settle(hass)
+    assert events[0].data["summary"] == "12345"
+    assert hass.states.get("sensor.irrigation_advice").attributes["summary"] == "12345"

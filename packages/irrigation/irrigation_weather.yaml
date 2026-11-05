@@ -56,7 +56,9 @@ automation:
                     pct: "{{ ai.final.pct | round(0) | int }}"
                     skip: "{{ ai.final.skip }}"
                     reason: "{{ ai.final.reason | default('', true) }}"
-                  ai_applied: true
+                  # True only when the AI script says its pct replaced the rule decision.
+                  ai_applied: >-
+                    {{ ai.final.applied is defined and ai.final.applied is boolean and ai.final.applied }}
       - variables:
           valid_hours: "{{ states('input_number.irrigation_valid_hours') | float(30) | round(0) | int }}"
       - action: esphome.irrigation_controller_set_weather_adjust

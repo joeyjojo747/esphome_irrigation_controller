@@ -3,6 +3,10 @@
 #   Conversation agent -> conversation.process with the agent id in the same helper
 #   Off                -> no call; rule-based weather adjustment still works.
 # The weather package calls script.irrigation_ai_advice when it exists.
+# Response: {final, advice}. When AI is Off, the provider fails or its reply cannot
+# be used, both are null (final: null) and the weather package keeps the rule decision;
+# a failure with mode not Off is logged as a warning (system_log), never raised.
+# final.applied is true only when the AI percentage replaced the rule decision.
 # Entity ids depend on the device name "irrigation-controller": do not change it.
 
 script:
@@ -159,19 +163,33 @@ script:
                     and advice.recommended_pct is not none %}
               {{ {'skip': false,
                   'pct': ([[advice.recommended_pct, rule_pct - 30] | max, [rule_pct + 30, ai_max] | min] | min) | round(0) | int,
-                  'reason': ''} }}
+                  'reason': '',
+                  'applied': true} }}
             {% else %}
               {{ {'skip': dec.skip | default(false) | bool(false),
                   'pct': rule_pct,
-                  'reason': dec.reason | default('', true)} }}
+                  'reason': dec.reason | default('', true),
+                  'applied': false} }}
             {% endif %}
+      - if:
+          - condition: template
+            value_template: "{{ advice is not mapping and ai_mode != 'Off' }}"
+        then:
+          - action: system_log.write
+            data:
+              level: warning
+              logger: irrigation.ai
+              message: >-
+                AI advice unavailable (provider {{ ai_mode }}, entity {{ ai_entity }}):
+                {{ 'unparseable or empty reply' if (task_res is defined or conv_res is defined) else 'provider error or unknown mode' }}
+            continue_on_error: true
       - if:
           - condition: template
             value_template: "{{ advice is mapping }}"
         then:
           - event: irrigation_advice
             event_data:
-              summary: "{{ advice.summary }}"
+              summary: "{{ advice.summary | string }}"
               recommended_pct: "{{ advice.recommended_pct }}"
               program_suggestions: "{{ advice.program_suggestions }}"
               warnings: "{{ advice.warnings }}"
