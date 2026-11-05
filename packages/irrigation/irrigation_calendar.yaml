@@ -1,0 +1,153 @@
+# Irrigation controller: calendar history and upcoming runs.
+# The user creates a Local Calendar named "Irrigation" (calendar.irrigation) at
+# install; this package only writes finished/skipped runs to it. Future runs are
+# not put in the calendar (HA cannot delete events); they are in
+# sensor.irrigation_upcoming. Entity ids depend on the device name
+# "irrigation-controller": do not change it.
+
+automation:
+  - id: irrigation_calendar_writer
+    alias: Irrigation calendar writer
+    mode: queued
+    max: 50
+    triggers:
+      - trigger: event
+        event_type: irrigation_program_finished
+        id: finished
+      - trigger: event
+        event_type: irrigation_replay_done
+        id: replay
+      - trigger: event
+        event_type: irrigation_skipped
+        id: skipped
+      - trigger: event
+        event_type: irrigation_replayed_record
+        id: replayed
+    variables:
+      cfg: "{{ state_attr('sensor.irrigation_config_backup', 'config') }}"
+      progs: "{{ cfg.programs if cfg is mapping and cfg.programs is defined else [] }}"
+      # Summary label per skip reason code (r = skipped_<reason>).
+      skip_labels:
+        skipped_rain_sensor: rain sensor
+        skipped_rain_delay: rain delay
+        skipped_weather: weather
+        skipped_controller_off: controller off
+    actions:
+      - choose:
+          - conditions: "{{ trigger.id == 'finished' }}"
+            sequence:
+              - variables:
+                  groups: "{{ [trigger.event.data] }}"
+          - conditions: "{{ trigger.id == 'replay' }}"
+            sequence:
+              - variables:
+                  groups: "{{ trigger.event.data.groups | default([], true) }}"
+        default:
+          - variables:
+              groups: []
+      - repeat:
+          for_each: "{{ groups }}"
+          sequence:
+            - variables:
+                g: "{{ repeat.item }}"
+                p: "{{ g.p | int(0) }}"
+                pname: &pname >-
+                  {% set ns = namespace(n='') %}
+                  {% for q in progs %}
+                    {% if q.program | int(-1) == p %}{% set ns.n = (q.name | default('', true)) | string | trim %}{% endif %}
+                  {% endfor %}
+                  {% if p == 255 %}Manual
+                  {% elif ns.n != '' %}{{ ns.n }}
+                  {% else %}Program {{ 'ABCDEFGH'[p] if 0 <= p < 8 else p }}
+                  {% endif %}
+            - action: calendar.create_event
+              target:
+                entity_id: calendar.irrigation
+              data:
+                summary: >-
+                  {{ pname | trim }} · {{ g.zones | int(0) }} zones · {{ (g.act | int(0) / 60) | round(0) | int }} min · {{ g.l | float(0) | round(0) | int }} L{{ ' ⚠' if g.warn | default(false) | bool(false) else '' }}
+                start_date_time: "{{ g.ts | int(0) | timestamp_custom('%Y-%m-%d %H:%M:%S') }}"
+                end_date_time: "{{ (g.ts | int(0) + g.act | int(0)) | timestamp_custom('%Y-%m-%d %H:%M:%S') }}"
+      # Live skips, and skip records replayed after an outage.
+      - if:
+          - condition: template
+            value_template: >-
+              {{ trigger.id in ['skipped', 'replayed']
+                 and trigger.event.data.r | string in skip_labels }}
+        then:
+          - variables:
+              e: "{{ trigger.event.data }}"
+              p: "{{ e.p | int(0) }}"
+              pname: *pname
+          - action: calendar.create_event
+            target:
+              entity_id: calendar.irrigation
+            data:
+              summary: "{{ pname | trim }} skipped — {{ skip_labels[e.r | string] }}"
+              start_date_time: "{{ e.ts | int(0) | timestamp_custom('%Y-%m-%d %H:%M:%S') }}"
+              end_date_time: "{{ (e.ts | int(0) + 900) | timestamp_custom('%Y-%m-%d %H:%M:%S') }}"
+
+  - id: irrigation_refresh_plan_schedule
+    alias: Irrigation refresh upcoming runs
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/30"
+      - trigger: homeassistant
+        event: start
+      # Fired by the daily weather adjust after it pushes its decision.
+      - trigger: event
+        event_type: irrigation_decision
+    actions:
+      - action: script.irrigation_refresh_plan
+
+script:
+  irrigation_refresh_plan:
+    alias: Irrigation refresh plan
+    mode: single
+    sequence:
+      - action: esphome.irrigation_controller_get_plan
+        data:
+          days: 14
+        response_variable: res
+      - if:
+          - condition: template
+            value_template: "{{ res is not mapping or res.error is defined or res.plan is not defined }}"
+        then:
+          - stop: Plan unavailable
+      - event: irrigation_plan
+        event_data:
+          plan: "{{ res.plan }}"
+
+template:
+  - triggers:
+      - trigger: event
+        event_type: irrigation_plan
+    variables:
+      cfg: "{{ state_attr('sensor.irrigation_config_backup', 'config') }}"
+      progs: "{{ cfg.programs if cfg is mapping and cfg.programs is defined else [] }}"
+      runs: >-
+        {% set ns = namespace(out=[]) %}
+        {% for it in trigger.event.data.plan | default([], true) | sort(attribute='date,start') %}
+          {% set p = it.p | int(0) %}
+          {% set nm = namespace(n='') %}
+          {% for q in progs %}
+            {% if q.program | int(-1) == p %}{% set nm.n = (q.name | default('', true)) | string | trim %}{% endif %}
+          {% endfor %}
+          {% set ns.out = ns.out + [{
+            'program': p,
+            'name': nm.n if nm.n != '' else 'Program ' ~ ('ABCDEFGH'[p] if 0 <= p < 8 else p),
+            'start': ((it.date ~ ' ' ~ it.start) | as_datetime | as_local).isoformat(),
+            'minutes': ((it.s | int(0)) / 60) | round(0) | int,
+            'pct': it.pct | int(0)
+          }] %}
+        {% endfor %}
+        {{ ns.out }}
+    sensor:
+      - name: Irrigation upcoming
+        unique_id: irrigation_upcoming
+        icon: mdi:calendar-clock
+        device_class: timestamp
+        state: "{{ runs[0].start if runs | count > 0 else 'unknown' }}"
+        attributes:
+          runs: "{{ runs }}"
