@@ -1,0 +1,56 @@
+# Irrigation controller: zone advisor. script.irrigation_suggest_zone suggests a
+# max cycle and soak time for one zone from its soil, slope and precipitation rate.
+# Fields: zone (1-16), apply (bool, default false). Response: {max_cycle_min, soak_min}.
+# It refreshes the config backup first and reads the zone from
+# sensor.irrigation_config_backup. With apply true it calls set_zone with that zone's
+# backup values (same keys as the action arguments, zone_output unchanged) and the
+# new max_cycle_min / soak_min.
+# Returns (0, 0) and changes nothing when the zone is not found, the soil is not
+# 0-5, precip is missing or not above 0, or the cycle would be 60 minutes or more.
+# Soil codes follow the firmware enum: 0 SAND, 1 LOAMY_SAND, 2 SANDY_LOAM, 3 LOAM,
+# 4 CLAY_LOAM, 5 CLAY.
+# Entity ids depend on the device name "irrigation-controller": do not change it.
+
+script:
+  irrigation_suggest_zone:
+    alias: Irrigation suggest zone cycle and soak
+    mode: queued
+    fields:
+      zone:
+        description: Zone number, 1-16.
+      apply:
+        description: Write the suggestion to the controller (default false).
+    sequence:
+      - action: script.irrigation_backup_config
+      # The backup sensor updates from an event, a few loop iterations later.
+      - delay:
+          milliseconds: 100
+      - variables:
+          cfg: "{{ state_attr('sensor.irrigation_config_backup', 'config') }}"
+          zones: >-
+            {% if cfg is mapping and cfg.zones is defined %}
+              {{ cfg.zones | selectattr('zone', 'eq', zone | int(0)) | list }}
+            {% else %}[]{% endif %}
+          zdata: "{{ zones[0] if zones | count > 0 else {} }}"
+          intake_table: [50, 30, 25, 13, 8, 5]
+          soil: "{{ zdata.soil | int(-1) if zdata.soil is defined else -1 }}"
+          slope: "{{ zdata.slope | float(0) if zdata.slope is defined else 0 }}"
+          precip: "{{ zdata.precip | float(0) if zdata.precip is defined else 0 }}"
+          factor: >-
+            {% if slope < 5 %}1.0{% elif slope < 8 %}0.8{% elif slope <= 12 %}0.6{% else %}0.4{% endif %}
+          valid: "{{ zdata != {} and 0 <= soil <= 5 and precip > 0 }}"
+          cycle: >-
+            {% if valid %}
+              {{ [3, (intake_table[soil] * factor / precip * 60) | int] | max }}
+            {% else %}0{% endif %}
+          result:
+            max_cycle_min: "{{ cycle | int if 0 < cycle | int < 60 else 0 }}"
+            soak_min: "{{ ([20, [60, cycle | int * 2] | min] | max) if 0 < cycle | int < 60 else 0 }}"
+      - if:
+          - condition: template
+            value_template: "{{ apply | default(false) | bool(false) and result.max_cycle_min > 0 }}"
+        then:
+          - action: esphome.irrigation_controller_set_zone
+            data: "{{ dict(zdata, max_cycle_min=result.max_cycle_min, soak_min=result.soak_min) }}"
+      - stop: Suggestion ready
+        response_variable: result
