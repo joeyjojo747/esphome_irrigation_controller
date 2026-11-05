@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -r tools/requirements-ha.txt
+      - name: Tag must match VERSION
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match v${version} (VERSION)" >&2
+            exit 1
+          fi
+      - name: Release checks
+        run: pytest tests/ha/test_release.py
+      - name: Build ZIP and release notes
+        run: python tools/build_release_zip.py --out build --notes build/release-notes.md
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: build/release-notes.md
+          files: build/esphome_irrigation_controller-*.zip

@@ -1,0 +1,49 @@
+name: Bug report
+description: Something does not work as described
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please remove secrets (API key, OTA password, Wi-Fi password) from anything you paste.
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.10.4"
+    validations:
+      required: true
+  - type: input
+    id: esphome_version
+    attributes:
+      label: ESPHome version
+      description: The Device Builder add-on or esphome package version.
+      placeholder: "2026.10.2"
+    validations:
+      required: true
+  - type: input
+    id: package_version
+    attributes:
+      label: Package version
+      description: Shown by the Irrigation package version helper in the dashboard Settings.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: ESPHome device log and the Home Assistant log around the time of the problem.
+      render: text
+    validations:
+      required: true
