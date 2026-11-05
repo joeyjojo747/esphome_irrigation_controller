@@ -75,7 +75,7 @@ async def test_ai_task_valid(pkg_hass, mocks):
         "summary", "recommended_pct", "program_suggestions", "warnings"}
     await settle(hass)
     assert len(events) == 1
-    assert events[0].data["summary"] == "Mild week ahead."
+    assert events[0].data["advice"]["summary"] == "Mild week ahead."
     assert events[0].data["provider"] == "AI Task"
     st = hass.states.get("sensor.irrigation_advice")
     assert st.state == "Mild week ahead."
@@ -313,5 +313,5 @@ async def test_numeric_summary_stays_string(pkg_hass, mocks):
     events = async_capture_events(hass, "irrigation_advice")
     await advise(hass)
     await settle(hass)
-    assert events[0].data["summary"] == "12345"
+    assert events[0].data["advice"]["summary"] == "12345"
     assert hass.states.get("sensor.irrigation_advice").attributes["summary"] == "12345"

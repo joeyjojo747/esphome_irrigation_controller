@@ -189,10 +189,8 @@ script:
         then:
           - event: irrigation_advice
             event_data:
-              summary: "{{ advice.summary | string }}"
-              recommended_pct: "{{ advice.recommended_pct }}"
-              program_suggestions: "{{ advice.program_suggestions }}"
-              warnings: "{{ advice.warnings }}"
+              # A dict keeps the summary a string (a bare numeric string would be parsed to a number).
+              advice: "{{ advice }}"
               provider: "{{ ai_mode }}"
       - variables:
           result:
@@ -209,11 +207,11 @@ template:
       - name: Irrigation advice
         unique_id: irrigation_advice
         icon: mdi:robot-outline
-        state: "{{ trigger.event.data.summary | string | truncate(255, true, '', 0) }}"
+        state: "{{ trigger.event.data.advice.summary | string | truncate(255, true, '', 0) }}"
         attributes:
-          summary: "{{ trigger.event.data.summary }}"
-          recommended_pct: "{{ trigger.event.data.recommended_pct }}"
-          program_suggestions: "{{ trigger.event.data.program_suggestions }}"
-          warnings: "{{ trigger.event.data.warnings }}"
+          summary: "{{ trigger.event.data.advice.summary | string }}"
+          recommended_pct: "{{ trigger.event.data.advice.recommended_pct }}"
+          program_suggestions: "{{ trigger.event.data.advice.program_suggestions }}"
+          warnings: "{{ trigger.event.data.advice.warnings }}"
           generated_at: "{{ now().isoformat() }}"
           provider: "{{ trigger.event.data.provider }}"
